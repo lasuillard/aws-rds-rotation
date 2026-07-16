@@ -19,7 +19,6 @@
         packages = {
           inherit (pkgs)
             pre-commit
-            just
             opentofu
             ;
         };
