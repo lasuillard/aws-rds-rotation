@@ -20,6 +20,8 @@
           inherit (pkgs)
             pre-commit
             opentofu
+            awscli2
+            postgresql_18
             ;
         };
 
