@@ -1,5 +1,13 @@
 {
   "[opentofu][opentofu-vars]": {
     "editor.defaultFormatter": "opentofu.vscode-opentofu"
-  }
+  },
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "*.asl.json"
+      ],
+      "url": "https://raw.githubusercontent.com/aws/amazon-states-language-service/refs/heads/master/src/json-schema/bundled.json"
+    }
+  ]
 }

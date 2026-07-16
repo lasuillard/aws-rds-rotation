@@ -1,6 +1,7 @@
 {
   "recommendations": [
     "EditorConfig.EditorConfig",
-    "opentofu.vscode-opentofu"
+    "opentofu.vscode-opentofu",
+    "amazonwebservices.aws-toolkit-vscode"
   ]
 }
