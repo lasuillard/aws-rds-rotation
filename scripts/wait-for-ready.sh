@@ -5,6 +5,9 @@ Wait for EC2 instance to be ready to connect by sending a command via SSM.
 
 Usage:
   wait-for-ready.sh <ec2-instance-id>
+
+References:
+- https://stackoverflow.com/questions/62403030/terraform-wait-till-the-instance-is-reachable
 '
 
 set -o pipefail
