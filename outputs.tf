@@ -1,11 +1,10 @@
+output "base_snapshot_id" {
+  description = "Base snapshot identifier to use for rotation."
+  value       = aws_db_instance.db.snapshot_identifier
+}
+
 output "psql_command" {
   sensitive   = true
-  description = "The command to connect to the database."
-  value       = <<CMD
-PGPASSWORD='${aws_db_instance.main.password}' psql \
-  --host='${local.db_host}' \
-  --port='${local.db_port}' \
-  --dbname='${aws_db_instance.main.db_name}' \
-  --username='${aws_db_instance.main.username}'
-CMD
+  description = "The command to connect to the database. You should establish the tunnel first and run this command."
+  value       = "PGUSER='${aws_db_instance.db.username}' PGPASSWORD='${aws_db_instance.db.password}' PGDATABASE='${aws_db_instance.db.db_name}' ./scripts/psql.sh 5432 '${aws_instance.bastion.id}' '${aws_route53_record.db.name}' '${local.db_port}'"
 }
