@@ -14,6 +14,13 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+
+        # BUG: https://github.com/nixos/nixpkgs/issues/522307
+        fixedPipx = pkgs.python3Packages.toPythonApplication (
+          pkgs.python3Packages.pipx.overridePythonAttrs (oldAttrs: {
+            doCheck = false;
+          })
+        );
       in
       {
         packages = {
@@ -21,8 +28,11 @@
             pre-commit
             opentofu
             awscli2
+            ssm-session-manager-plugin
             postgresql_18
             ;
+
+          inherit fixedPipx;
         };
 
         devShells.default = pkgs.mkShell {
