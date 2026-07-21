@@ -34,6 +34,9 @@ $aws_annoying_cli session-manager port-forward \
   --remote-port "$remote_port" \
   | tee --append "$log_file"
 
+# Wait for connection establishment
+sleep 3
+
 # Run SQL scripts
 export PGHOST="localhost"
 export PGPORT="$local_port"
