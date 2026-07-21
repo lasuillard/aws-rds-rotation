@@ -6,18 +6,39 @@
             "Type": "Task",
             "Arguments": {
                 "DbInstanceIdentifier": "{% $states.input.newDBIdentifier %}",
-                "DbSnapshotIdentifier": "{% $states.input.snapshotIdentifier %}"
+                "DbSnapshotIdentifier": "{% $states.input.snapshotIdentifier %}",
+                "Tags": [
+                    {
+                        "Key": "Created-By",
+                        "Value": "aws-rds-rotation"
+                    }
+                ]
             },
             "Resource": "arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot",
             "Next": "Wait for DB instance ready",
             "Assign": {
-                "dbIdentifier": "{% $states.result.DBInstance.DBInstanceIdentifier %}",
-                "dbDomain": "{% $states.result.DBInstance.Endpoint.Address %}"
-            }
+                "dbIdentifier": "{% $states.result.DbInstance.DbInstanceIdentifier %}",
+                "oldDbIdentifier": "{% $states.input.oldDbIdentifier %}",
+                "newMasterPassword": "{% $states.input.newMasterPassword %}"
+            },
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "Rds.DbInstanceAlreadyExistsException"
+                    ],
+                    "Next": "Check DB instance status",
+                    "Comment": "Skip if instance already exists",
+                    "Assign": {
+                        "dbIdentifier": "{% $states.input.newDBIdentifier %}",
+                        "oldDbIdentifier": "{% $states.input.oldDbIdentifier %}",
+                        "newMasterPassword": "{% $states.input.newMasterPassword %}"
+                    }
+                }
+            ]
         },
         "Wait for DB instance ready": {
             "Type": "Wait",
-            "Seconds": 60,
+            "Seconds": 150,
             "Next": "Check DB instance status"
         },
         "Check DB instance status": {
@@ -27,7 +48,8 @@
             },
             "Resource": "arn:aws:states:::aws-sdk:rds:describeDBInstances",
             "Assign": {
-                "dbStatus": "{% $states.result.DBInstances[0].DBInstanceStatus %}"
+                "dbStatus": "{% $states.result.DbInstances[0].DbInstanceStatus %}",
+                "dbDomain": "{% $states.result.DbInstances[0].Endpoint ? $states.result.DbInstances[0].Endpoint.Address : 'n/a' %}"
             },
             "Next": "Is DB instance available?"
         },
@@ -36,19 +58,10 @@
             "Choices": [
                 {
                     "Condition": "{% ($dbStatus) = (\"available\") %}",
-                    "Next": "Update master password"
+                    "Next": "Run SQL queries"
                 }
             ],
             "Default": "Wait for DB instance ready"
-        },
-        "Update master password": {
-            "Type": "Task",
-            "Arguments": {
-                "DbInstanceIdentifier": "{% $dbIdentifier %}",
-                "MasterUserPassword": "{% $states.input.newMasterPassword %}"
-            },
-            "Resource": "arn:aws:states:::aws-sdk:rds:modifyDBInstance",
-            "Next": "Run SQL queries"
         },
         "Run SQL queries": {
             "Type": "Task",
@@ -56,7 +69,7 @@
             "Output": "{% $states.result.Payload %}",
             "Arguments": {
                 "Payload": "{% $states.input %}",
-                "FunctionName": "{% $states.input.lambdaFunctionName %}"
+                "FunctionName": "aws-rds-rotation-run-sql"
             },
             "Retry": [
                 {
@@ -82,7 +95,7 @@
                         {
                             "Action": "UPSERT",
                             "ResourceRecordSet": {
-                                "Name": "{% $states.input.domainName %}",
+                                "Name": "db.example.com",
                                 "Type": "CNAME",
                                 "Ttl": 60,
                                 "ResourceRecords": [
@@ -94,7 +107,7 @@
                         }
                     ]
                 },
-                "HostedZoneId": "{% $states.input.hostedZoneId %}"
+                "HostedZoneId": "Z00746631JHUVPG08FEOX"
             },
             "Resource": "arn:aws:states:::aws-sdk:route53:changeResourceRecordSets",
             "Next": "Delete old database"
@@ -102,7 +115,7 @@
         "Delete old database": {
             "Type": "Task",
             "Arguments": {
-                "DbInstanceIdentifier": "{% $states.input.oldDbIdentifier %}",
+                "DbInstanceIdentifier": "{% $oldDbIdentifier %}",
                 "SkipFinalSnapshot": true
             },
             "Resource": "arn:aws:states:::aws-sdk:rds:deleteDBInstance",

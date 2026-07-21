@@ -49,13 +49,22 @@ data "aws_iam_policy_document" "workflow_role_policy" {
     effect = "Allow"
     actions = [
       "rds:RestoreDBInstanceFromDBSnapshot",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
       "rds:DescribeDBInstances",
       "rds:ModifyDBInstance",
-      "rds:DeleteDBInstance"
+      "rds:DeleteDBInstance",
+      "rds:AddTagsToResource"
     ]
     resources = [
       "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
       "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:snapshot:*"
+
     ]
   }
 
@@ -95,18 +104,25 @@ resource "aws_sfn_state_machine" "workflow" {
   depends_on = [
     aws_iam_role_policy_attachments_exclusive.workflow # Ensure policy is attached to the role
   ]
-  timeouts {
-    create = "3m"
-  }
 
   name_prefix = "${local.project_name}-workflow-"
   role_arn    = aws_iam_role.workflow.arn
   definition  = file("${path.module}/statemachine/statemachine.asl.json")
+  publish     = true
 
   logging_configuration {
     log_destination        = "${aws_cloudwatch_log_group.workflow.arn}:*"
     include_execution_data = true
     level                  = "ALL"
+  }
+}
+
+resource "aws_sfn_alias" "workflow" {
+  name = "${local.project_name}-workflow"
+
+  routing_configuration {
+    state_machine_version_arn = aws_sfn_state_machine.workflow.state_machine_version_arn
+    weight                    = 100
   }
 }
 
