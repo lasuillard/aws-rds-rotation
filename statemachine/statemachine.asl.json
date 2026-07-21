@@ -1,0 +1,113 @@
+{
+    "Comment": "A description of my state machine",
+    "StartAt": "Restore DB instance from snapshot",
+    "States": {
+        "Restore DB instance from snapshot": {
+            "Type": "Task",
+            "Arguments": {
+                "DbInstanceIdentifier": "{% $states.input.newDBIdentifier %}",
+                "DbSnapshotIdentifier": "{% $states.input.snapshotIdentifier %}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot",
+            "Next": "Wait for DB instance ready",
+            "Assign": {
+                "dbIdentifier": "{% $states.result.DBInstance.DBInstanceIdentifier %}",
+                "dbDomain": "{% $states.result.DBInstance.Endpoint.Address %}"
+            }
+        },
+        "Wait for DB instance ready": {
+            "Type": "Wait",
+            "Seconds": 60,
+            "Next": "Check DB instance status"
+        },
+        "Check DB instance status": {
+            "Type": "Task",
+            "Arguments": {
+                "DbInstanceIdentifier": "{% $dbIdentifier %}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:rds:describeDBInstances",
+            "Assign": {
+                "dbStatus": "{% $states.result.DBInstances[0].DBInstanceStatus %}"
+            },
+            "Next": "Is DB instance available?"
+        },
+        "Is DB instance available?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Condition": "{% ($dbStatus) = (\"available\") %}",
+                    "Next": "Update master password"
+                }
+            ],
+            "Default": "Wait for DB instance ready"
+        },
+        "Update master password": {
+            "Type": "Task",
+            "Arguments": {
+                "DbInstanceIdentifier": "{% $dbIdentifier %}",
+                "MasterUserPassword": "{% $states.input.newMasterPassword %}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:rds:modifyDBInstance",
+            "Next": "Run SQL queries"
+        },
+        "Run SQL queries": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Output": "{% $states.result.Payload %}",
+            "Arguments": {
+                "Payload": "{% $states.input %}",
+                "FunctionName": "{% $states.input.lambdaFunctionName %}"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
+                }
+            ],
+            "Next": "Update domain record to new database"
+        },
+        "Update domain record to new database": {
+            "Type": "Task",
+            "Arguments": {
+                "ChangeBatch": {
+                    "Changes": [
+                        {
+                            "Action": "UPSERT",
+                            "ResourceRecordSet": {
+                                "Name": "{% $states.input.domainName %}",
+                                "Type": "CNAME",
+                                "Ttl": 60,
+                                "ResourceRecords": [
+                                    {
+                                        "Value": "{% $dbDomain %}"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "HostedZoneId": "{% $states.input.hostedZoneId %}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:route53:changeResourceRecordSets",
+            "Next": "Delete old database"
+        },
+        "Delete old database": {
+            "Type": "Task",
+            "Arguments": {
+                "DbInstanceIdentifier": "{% $states.input.oldDbIdentifier %}",
+                "SkipFinalSnapshot": true
+            },
+            "Resource": "arn:aws:states:::aws-sdk:rds:deleteDBInstance",
+            "End": true
+        }
+    },
+    "QueryLanguage": "JSONata"
+}

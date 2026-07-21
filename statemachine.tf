@@ -1,0 +1,116 @@
+// TODO: Better naming of resources
+
+data "aws_iam_policy_document" "workflow_assume_role_policy" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["states.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role" "workflow" {
+  name_prefix        = "${local.project_name}-workflow-role-"
+  assume_role_policy = data.aws_iam_policy_document.workflow_assume_role_policy.json
+}
+
+# https://aws.amazon.com/ko/blogs/devops/best-practices-for-writing-step-functions-terraform-projects/
+data "aws_iam_policy_document" "workflow_role_policy" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogDelivery",
+      "logs:CreateLogStream",
+      "logs:GetLogDelivery",
+      "logs:UpdateLogDelivery",
+      "logs:DeleteLogDelivery",
+      "logs:ListLogDeliveries",
+      "logs:PutLogEvents",
+      "logs:PutResourcePolicy",
+      "logs:DescribeResourcePolicies",
+      "logs:DescribeLogGroups"
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "lambda:InvokeFunction",
+    ]
+    resources = [aws_lambda_function.lambda.arn]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "rds:RestoreDBInstanceFromDBSnapshot",
+      "rds:DescribeDBInstances",
+      "rds:ModifyDBInstance",
+      "rds:DeleteDBInstance"
+    ]
+    resources = [
+      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
+      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:snapshot:*"
+    ]
+  }
+
+  statement {
+    effect    = "Allow"
+    actions   = ["route53:ChangeResourceRecordSets"]
+    resources = [aws_route53_zone.phz.arn]
+  }
+
+  statement {
+    sid       = "UpdateRoute53RecordForDatabase"
+    effect    = "Allow"
+    actions   = ["route53:ChangeResourceRecordSets"]
+    resources = [aws_route53_zone.phz.arn]
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:ChangeResourceRecordSetsNormalizedRecordNames"
+      values   = [aws_route53_record.db.name]
+    }
+  }
+}
+
+resource "aws_iam_policy" "workflow" {
+  name_prefix = "${local.project_name}-workflow-policy-"
+  policy      = data.aws_iam_policy_document.workflow_role_policy.json
+}
+
+resource "aws_iam_role_policy_attachments_exclusive" "workflow" {
+  role_name = aws_iam_role.workflow.name
+  policy_arns = [
+    aws_iam_policy.workflow.arn
+  ]
+}
+
+resource "aws_sfn_state_machine" "workflow" {
+  depends_on = [
+    aws_iam_role_policy_attachments_exclusive.workflow # Ensure policy is attached to the role
+  ]
+  timeouts {
+    create = "3m"
+  }
+
+  name_prefix = "${local.project_name}-workflow-"
+  role_arn    = aws_iam_role.workflow.arn
+  definition  = file("${path.module}/statemachine/statemachine.asl.json")
+
+  logging_configuration {
+    log_destination        = "${aws_cloudwatch_log_group.workflow.arn}:*"
+    include_execution_data = true
+    level                  = "ALL"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "workflow" {
+  name_prefix       = "/aws/vendedlogs/states/${local.project_name}-workflow-"
+  retention_in_days = 1
+}
