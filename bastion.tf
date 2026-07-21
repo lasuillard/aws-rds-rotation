@@ -54,3 +54,13 @@ resource "aws_vpc_security_group_egress_rule" "bastion_to_rds" {
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.db.id
 }
+
+resource "null_resource" "wait_for_bastion_ready" {
+  depends_on = [aws_instance.bastion]
+
+  provisioner "local-exec" {
+    command = <<CMD
+'${path.module}/scripts/wait-for-ready.sh' '${aws_instance.bastion.id}' \
+CMD
+  }
+}

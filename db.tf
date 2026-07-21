@@ -76,7 +76,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_bastion" {
 }
 
 resource "null_resource" "db_initializer" {
-  depends_on = [aws_db_instance.db]
+  depends_on = [aws_db_instance.db, null_resource.wait_for_bastion_ready]
 
   # Load Pagila dataset (https://github.com/devrimgunduz/pagila)
   provisioner "local-exec" {
@@ -89,8 +89,7 @@ resource "null_resource" "db_initializer" {
       PGCONNECT_TIMEOUT = 30
     }
     command = <<CMD
-'${path.module}/scripts/wait-for-ready.sh' '${aws_instance.bastion.id}' \
-&& '${path.module}/scripts/init-db.sh' 5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
+'${path.module}/scripts/init-db.sh' 5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
 CMD
   }
 }
