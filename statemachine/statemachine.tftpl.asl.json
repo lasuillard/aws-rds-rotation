@@ -1,0 +1,182 @@
+{
+    "Comment": "aws-rds-rotation",
+    "StartAt": "Prepare",
+    "States": {
+        "Prepare": {
+            "Type": "Wait",
+            "Seconds": 5,
+            "Next": "Find old database",
+            "Assign": {
+                "dbIdPrefix": "${db_id_prefix}",
+                "snapshotId": "{% $states.input.snapshotId %}",
+                "newDbId": "{% $exists($states.input.newDbId) ? $states.input.newDbId : '${db_id_prefix}' & $now('[Y0001][M01][D01]t[H01][m01][s01]', '+0900') %}",
+                "newMasterPassword": "$states.input.newMasterPassword",
+                "lambdaFunctionName": "${lambda_function_name}",
+                "route53HostedZoneId": "${route53_hosted_zone_id}",
+                "route53DomainName": "${route53_domain_name}"
+            }
+        },
+        "Find old database": {
+            "Type": "Task",
+            "Arguments": {},
+            "Resource": "arn:aws:states:::aws-sdk:rds:describeDBInstances",
+            "Next": "Check instance count",
+            "Assign": {
+                "matchedInstanceIds": "{% $states.result.DbInstances[$substring(DbInstanceIdentifier, 0, $length($dbIdPrefix)) = $dbIdPrefix] %}"
+            }
+        },
+        "Check instance count": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Next": "Too many instances (>2)",
+                    "Condition": "{% $count($matchedInstanceIds) > 2 %}"
+                }
+            ],
+            "Default": "Restore DB instance from snapshot",
+            "Assign": {
+                "oldDbId": "{% $exists($matchedInstanceIds[0]) ? $matchedInstanceIds[0].DbInstanceIdentifier : null %}"
+            }
+        },
+        "Too many instances (>2)": {
+            "Type": "Fail",
+            "Error": "TooManyInstances",
+            "Cause": "{% \"There are more than 2 instances (\" & $count($matchedInstanceIds) & \") found, which is unexpected.\" %}",
+            "Comment": "If there are more than 2 instances. You should troubleshoot the underlying issues."
+        },
+        "Restore DB instance from snapshot": {
+            "Type": "Task",
+            "Arguments": {
+                "DbInstanceIdentifier": "{% $newDbId %}",
+                "DbSnapshotIdentifier": "{% $snapshotId %}",
+                "Tags": [
+                    {
+                        "Key": "Project",
+                        "Value": "aws-rds-rotation"
+                    }
+                ]
+            },
+            "Resource": "arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot",
+            "Next": "Wait for DB instance ready",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "Rds.DbInstanceAlreadyExistsException"
+                    ],
+                    "Next": "Check DB instance status",
+                    "Comment": "Skip if instance already exists"
+                }
+            ]
+        },
+        "Wait for DB instance ready": {
+            "Type": "Wait",
+            "Seconds": 30,
+            "Next": "Check DB instance status"
+        },
+        "Check DB instance status": {
+            "Type": "Task",
+            "Arguments": {
+                "DbInstanceIdentifier": "{% $newDbId %}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:rds:describeDBInstances",
+            "Assign": {
+                "dbStatus": "{% $states.result.DbInstances[0].DbInstanceStatus %}",
+                "dbDomain": "{% $states.result.DbInstances[0].Endpoint ? $states.result.DbInstances[0].Endpoint.Address : 'n/a' %}"
+            },
+            "Next": "Is DB instance available?"
+        },
+        "Is DB instance available?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Condition": "{% ($dbStatus) = (\"available\") %}",
+                    "Next": "Run SQL queries"
+                },
+                {
+                    "Next": "Wait for DB instance ready",
+                    "Condition": "{% $dbStatus in [\"creating\", \"starting\", \"storage-initialization\", \"configuring-enhanced-monitoring\"] %}"
+                }
+            ],
+            "Default": "Instance restoration failed"
+        },
+        "Instance restoration failed": {
+            "Type": "Fail",
+            "Error": "InstanceRestorationFailed",
+            "Cause": "Failed to restore database instance from snapshot.",
+            "Comment": "Instance restoration entered unexpected status. Please diagnose the RDS events."
+        },
+        "Run SQL queries": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Output": "{% $states.result.Payload %}",
+            "Arguments": {
+                "Payload": "{% $states.input %}",
+                "FunctionName": "{% $lambdaFunctionName %}"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
+                }
+            ],
+            "Next": "Update domain record to new database"
+        },
+        "Update domain record to new database": {
+            "Type": "Task",
+            "Arguments": {
+                "ChangeBatch": {
+                    "Changes": [
+                        {
+                            "Action": "UPSERT",
+                            "ResourceRecordSet": {
+                                "Name": "{% $route53DomainName %}",
+                                "Type": "CNAME",
+                                "Ttl": 60,
+                                "ResourceRecords": [
+                                    {
+                                        "Value": "{% $dbDomain %}"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "HostedZoneId": "{% $route53HostedZoneId %}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:route53:changeResourceRecordSets",
+            "Next": "Old instance exists?"
+        },
+        "Old instance exists?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Next": "Delete old database",
+                    "Condition": "{% $oldDbId != null %}"
+                }
+            ],
+            "Default": "No instance to delete"
+        },
+        "Delete old database": {
+            "Type": "Task",
+            "Arguments": {
+                "DbInstanceIdentifier": "{% $oldDbId %}",
+                "SkipFinalSnapshot": true
+            },
+            "Resource": "arn:aws:states:::aws-sdk:rds:deleteDBInstance",
+            "End": true
+        },
+        "No instance to delete": {
+            "Type": "Pass",
+            "End": true
+        }
+    },
+    "QueryLanguage": "JSONata"
+}

@@ -1,9 +1,5 @@
 {
-  "newDBIdentifier": "aws-rds-rotation-db-20260721T1840",
-  "snapshotIdentifier": "aws-rds-rotation-base-snapshot",
-  "newMasterPassword": "helloworld",
-  "lambdaFunctionName": "aws-rds-rotation-run-sql",
-  "domainName": "db.example.com",
-  "hostedZoneId": "Z00746631JHUVPG08FEOX",
-  "oldDbIdentifier": "aws-rds-rotation-db-base"
+  "newDbId": "",
+  "newMasterPassword": "",
+  "snapshotId": ""
 }

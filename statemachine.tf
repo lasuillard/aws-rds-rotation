@@ -1,4 +1,14 @@
-// TODO: Better naming of resources
+locals {
+  workflow_template_path = "${path.module}/statemachine/statemachine.tftpl.asl.json"
+
+  workflow_template_raw_content = file(local.workflow_template_path)
+
+  # Extract all workflow input names ($states.input.*)
+  workflow_input_names = toset(flatten(regexall(
+    "\\$states\\.input\\.([a-zA-Z0-9_.-]*[a-zA-Z0-9_-]+)",
+    local.workflow_template_raw_content
+  )))
+}
 
 data "aws_iam_policy_document" "workflow_assume_role_policy" {
   statement {
@@ -48,6 +58,7 @@ data "aws_iam_policy_document" "workflow_role_policy" {
   statement {
     effect = "Allow"
     actions = [
+      "rds:DescribeDBInstances",
       "rds:RestoreDBInstanceFromDBSnapshot",
     ]
     resources = ["*"]
@@ -56,7 +67,6 @@ data "aws_iam_policy_document" "workflow_role_policy" {
   statement {
     effect = "Allow"
     actions = [
-      "rds:DescribeDBInstances",
       "rds:ModifyDBInstance",
       "rds:DeleteDBInstance",
       "rds:AddTagsToResource"
@@ -107,8 +117,16 @@ resource "aws_sfn_state_machine" "workflow" {
 
   name_prefix = "${local.project_name}-workflow-"
   role_arn    = aws_iam_role.workflow.arn
-  definition  = file("${path.module}/statemachine/statemachine.asl.json")
-  publish     = true
+  definition = templatefile(
+    local.workflow_template_path,
+    {
+      db_id_prefix           = local.db_id_prefix
+      lambda_function_name   = aws_lambda_function.lambda.function_name
+      route53_hosted_zone_id = aws_route53_zone.phz.zone_id
+      route53_domain_name    = aws_route53_record.db.name
+    }
+  )
+  publish = true
 
   logging_configuration {
     log_destination        = "${aws_cloudwatch_log_group.workflow.arn}:*"

@@ -6,7 +6,7 @@ locals {
   # To track the state of the database restored/deleted externally,
   # we need to follow the RDS instance identifier using the pattern matching
   db_id_prefix  = "${local.project_name}-db-"
-  db_id_default = "${local.db_id_prefix}base"
+  db_id_default = "${local.db_id_prefix}00000000t000000"
 
   db_instance_ids = [
     for id in data.aws_db_instances.find_db.instance_identifiers : id
@@ -97,6 +97,11 @@ CMD
 # Initial snapshot for demo (represents production database snapshot)
 resource "aws_db_snapshot" "snapshot" {
   depends_on = [null_resource.db_initializer]
+  lifecycle {
+    ignore_changes = [
+      db_instance_identifier # This snapshot is just for demo, so we don't need to track the state of the this snapshot
+    ]
+  }
 
   db_instance_identifier = aws_db_instance.db.identifier
   db_snapshot_identifier = "${local.project_name}-base-snapshot"
