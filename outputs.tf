@@ -1,6 +1,6 @@
 output "base_snapshot_id" {
   description = "Base snapshot identifier to use for rotation."
-  value       = aws_db_instance.db.snapshot_identifier
+  value       = aws_db_snapshot.base.db_snapshot_identifier
 }
 
 output "psql_command" {

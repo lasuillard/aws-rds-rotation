@@ -95,7 +95,7 @@ CMD
 }
 
 # Initial snapshot for demo (represents production database snapshot)
-resource "aws_db_snapshot" "snapshot" {
+resource "aws_db_snapshot" "base" {
   depends_on = [null_resource.db_initializer]
   lifecycle {
     ignore_changes = [
