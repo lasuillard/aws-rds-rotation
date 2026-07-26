@@ -7,13 +7,7 @@
             "Seconds": 5,
             "Next": "Find old database",
             "Assign": {
-                "dbIdPrefix": "${db_id_prefix}",
-                "snapshotId": "{% $states.input.snapshotId %}",
-                "newDbId": "{% $exists($states.input.newDbId) ? $states.input.newDbId : '${db_id_prefix}' & $now('[Y0001][M01][D01]t[H01][m01][s01]', '+0900') %}",
-                "newMasterPassword": "$states.input.newMasterPassword",
-                "lambdaFunctionName": "${lambda_function_name}",
-                "route53HostedZoneId": "${route53_hosted_zone_id}",
-                "route53DomainName": "${route53_domain_name}"
+                "inputs": "{% (\n  $dbIdPrefix := \"${db_id_prefix}\";\n  {\n    \"dbIdPrefix\": $dbIdPrefix,\n    \"newDbIdRaw\": $states.input.newDbId,\n    \"newDbId\": $exists($states.input.newDbId) ? $states.input.newDbId : $dbIdPrefix & $now(\"[Y0001][M01][D01]t[H01][m01][s01]\", \"+0900\"),\n    \"snapshotId\": $states.input.snapshotId,\n    \"lambdaFunctionName\": \"${lambda_function_name}\",\n    \"route53HostedZoneId\": \"${route53_hosted_zone_id}\",\n    \"route53DomainName\": \"${route53_domain_name}\"\n  }\n)\n %}"
             }
         },
         "Find old database": {
@@ -22,33 +16,34 @@
             "Resource": "arn:aws:states:::aws-sdk:rds:describeDBInstances",
             "Next": "Check instance count",
             "Assign": {
-                "matchedInstanceIds": "{% $states.result.DbInstances[$substring(DbInstanceIdentifier, 0, $length($dbIdPrefix)) = $dbIdPrefix] %}"
+                "matchedInstances": "{% $states.result.DbInstances[$substring(DbInstanceIdentifier, 0, $length($inputs.dbIdPrefix)) = $inputs.dbIdPrefix] %}"
             }
         },
         "Check instance count": {
             "Type": "Choice",
             "Choices": [
                 {
-                    "Next": "Too many instances (>2)",
-                    "Condition": "{% $count($matchedInstanceIds) > 2 %}"
+                    "Next": "Too many instances (>1)",
+                    "Condition": "{% (($count($matchedInstances)) > (1) and $not($exists($inputs.newDbIdRaw))) %}"
                 }
             ],
             "Default": "Restore DB instance from snapshot",
             "Assign": {
-                "oldDbId": "{% $exists($matchedInstanceIds[0]) ? $matchedInstanceIds[0].DbInstanceIdentifier : null %}"
+                "oldDb": "{% $exists($matchedInstances[0]) ? $matchedInstances[0] : null %}",
+                "oldDbId": "{% $exists($matchedInstances[0]) ? $matchedInstances[0].DbInstanceIdentifier : null %}"
             }
         },
-        "Too many instances (>2)": {
+        "Too many instances (>1)": {
             "Type": "Fail",
             "Error": "TooManyInstances",
-            "Cause": "{% \"There are more than 2 instances (\" & $count($matchedInstanceIds) & \") found, which is unexpected.\" %}",
-            "Comment": "If there are more than 2 instances. You should troubleshoot the underlying issues."
+            "Cause": "{% \"There are more than 1 instances (\" & $count($matchedInstances) & \") found. Which might indicate that another workflow in in progress. Retry later.\" %}",
+            "Comment": "If there are more than 1 instances, it could be a sign of that another workflow is in progress. If you meant to continue the ongoing workflow from failure, set input newDbId to the identifier of created instance."
         },
         "Restore DB instance from snapshot": {
             "Type": "Task",
             "Arguments": {
-                "DbInstanceIdentifier": "{% $newDbId %}",
-                "DbSnapshotIdentifier": "{% $snapshotId %}",
+                "DbInstanceIdentifier": "{% $inputs.newDbId %}",
+                "DbSnapshotIdentifier": "{% $inputs.snapshotId %}",
                 "Tags": [
                     {
                         "Key": "Project",
@@ -76,7 +71,7 @@
         "Check DB instance status": {
             "Type": "Task",
             "Arguments": {
-                "DbInstanceIdentifier": "{% $newDbId %}"
+                "DbInstanceIdentifier": "{% $inputs.newDbId %}"
             },
             "Resource": "arn:aws:states:::aws-sdk:rds:describeDBInstances",
             "Assign": {
@@ -94,7 +89,7 @@
                 },
                 {
                     "Next": "Wait for DB instance ready",
-                    "Condition": "{% $dbStatus in [\"creating\", \"starting\", \"storage-initialization\", \"configuring-enhanced-monitoring\"] %}"
+                    "Condition": "{% $dbStatus in [\"creating\", \"starting\", \"storage-initialization\", \"configuring-enhanced-monitoring\", \"modifying\"] %}"
                 }
             ],
             "Default": "Instance restoration failed"
@@ -111,7 +106,7 @@
             "Output": "{% $states.result.Payload %}",
             "Arguments": {
                 "Payload": "{% $states.input %}",
-                "FunctionName": "{% $lambdaFunctionName %}"
+                "FunctionName": "{% $inputs.lambdaFunctionName %}"
             },
             "Retry": [
                 {
@@ -137,7 +132,7 @@
                         {
                             "Action": "UPSERT",
                             "ResourceRecordSet": {
-                                "Name": "{% $route53DomainName %}",
+                                "Name": "{% $inputs.route53DomainName %}",
                                 "Type": "CNAME",
                                 "Ttl": 60,
                                 "ResourceRecords": [
@@ -149,7 +144,7 @@
                         }
                     ]
                 },
-                "HostedZoneId": "{% $route53HostedZoneId %}"
+                "HostedZoneId": "{% $inputs.route53HostedZoneId %}"
             },
             "Resource": "arn:aws:states:::aws-sdk:route53:changeResourceRecordSets",
             "Next": "Old instance exists?"
