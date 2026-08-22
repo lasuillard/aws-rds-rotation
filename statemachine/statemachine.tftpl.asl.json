@@ -44,6 +44,10 @@
             "Arguments": {
                 "DbInstanceIdentifier": "{% $inputs.newDbId %}",
                 "DbSnapshotIdentifier": "{% $inputs.snapshotId %}",
+                "DbSubnetGroupName": "{% $oldDb.DbSubnetGroup.DbSubnetGroupName %}",
+                "EngineVersion": "{% $oldDb.EngineVersion %}",
+                "PubliclyAccessible": "{% $oldDb.PubliclyAccessible %}",
+                "VpcSecurityGroupIds": "{% $oldDb.VpcSecurityGroups[].VpcSecurityGroupId %}",
                 "Tags": [
                     {
                         "Key": "Project",
