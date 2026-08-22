@@ -1,26 +1,20 @@
 output "base_snapshot_id" {
   description = "Base snapshot identifier to use for rotation."
-  value       = aws_db_snapshot.base.db_snapshot_identifier
+  value       = module.core.base_snapshot_id
 }
 
 output "psql_command" {
   sensitive   = true
   description = "The command to connect to the database. You should establish the tunnel first and run this command."
-  value       = "PGUSER='${aws_db_instance.db.username}' PGPASSWORD='' PGDATABASE='${aws_db_instance.db.db_name}' ./scripts/psql.sh 5432 '${aws_instance.bastion.id}' '${aws_route53_record.db.name}' '${local.db_port}'"
+  value       = module.core.psql_command
 }
 
 output "workflow_command" {
   description = "Command to trigger the step function workflow."
-  value       = <<CMD
-aws stepfunctions start-execution \
-  --state-machine-arn='${aws_sfn_alias.workflow.arn}' \
-  --input file://<path-to-input-json>
-CMD
+  value       = module.workflow.workflow_command
 }
 
 output "workflow_input" {
   description = "Example JSON for the available step function workflow inputs."
-  value = jsonencode({
-    for key in local.workflow_input_names : key => ""
-  })
+  value       = module.workflow.workflow_input
 }

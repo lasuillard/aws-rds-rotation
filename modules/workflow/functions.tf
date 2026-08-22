@@ -12,21 +12,23 @@ data "aws_iam_policy_document" "lambda_assume_role_policy" {
 }
 
 resource "aws_iam_role" "lambda" {
-  name_prefix        = "${local.project_name}-lambda-role-"
+  name_prefix        = "${var.project_name}-lambda-role-"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
 }
 
 data "aws_iam_policy_document" "lambda_role_policy" {
   statement {
-    sid       = "UpdateRDSInstanceAndConnectIAMAuth"
-    effect    = "Allow"
-    actions   = ["rds:ModifyDBInstance", "rds-db:connect"]
-    resources = [aws_db_instance.db.arn]
+    sid     = "UpdateRDSInstanceAndConnectIAMAuth"
+    effect  = "Allow"
+    actions = ["rds:ModifyDBInstance", "rds-db:connect"]
+    resources = [
+      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${var.db_id_prefix}*",
+    ]
   }
 }
 
 resource "aws_iam_policy" "lambda" {
-  name_prefix = "${local.project_name}-lambda-policy-"
+  name_prefix = "${var.project_name}-lambda-policy-"
   policy      = data.aws_iam_policy_document.lambda_role_policy.json
 }
 
@@ -46,7 +48,7 @@ data "archive_file" "lambda_zip" {
 }
 
 resource "aws_lambda_function" "lambda" {
-  function_name    = "${local.project_name}-run-sql"
+  function_name    = "${var.project_name}-run-sql"
   description      = "Function to run SQL queries on the database, as part of the step function workflow."
   role             = aws_iam_role.lambda.arn
   runtime          = "python3.12"
@@ -55,15 +57,15 @@ resource "aws_lambda_function" "lambda" {
   handler          = "main.lambda_handler"
 
   vpc_config {
-    subnet_ids         = [aws_subnet.private_1.id]
+    subnet_ids         = var.lambda_subnets
     security_group_ids = [aws_security_group.lambda.id]
   }
 }
 
 resource "aws_security_group" "lambda" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = var.vpc_id
 
-  name_prefix = "${local.project_name}-lambda-sg-"
+  name_prefix = "${var.project_name}-lambda-sg-"
   description = "Security group for the Lambda functions"
 }
 
@@ -75,7 +77,7 @@ resource "aws_vpc_security_group_egress_rule" "lambda_to_rds" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  referenced_security_group_id = aws_security_group.db.id
+  referenced_security_group_id = var.db_security_group_id
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {

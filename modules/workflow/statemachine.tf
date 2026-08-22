@@ -24,7 +24,7 @@ data "aws_iam_policy_document" "workflow_assume_role_policy" {
 }
 
 resource "aws_iam_role" "workflow" {
-  name_prefix        = "${local.project_name}-workflow-role-"
+  name_prefix        = "${var.project_name}-workflow-role-"
   assume_role_policy = data.aws_iam_policy_document.workflow_assume_role_policy.json
 }
 
@@ -72,34 +72,33 @@ data "aws_iam_policy_document" "workflow_role_policy" {
       "rds:AddTagsToResource"
     ]
     resources = [
-      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
+      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${var.db_id_prefix}*",
       "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:snapshot:*"
-
     ]
   }
 
   statement {
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
-    resources = [aws_route53_zone.phz.arn]
+    resources = [var.db_route53_zone_arn]
   }
 
   statement {
     sid       = "UpdateRoute53RecordForDatabase"
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
-    resources = [aws_route53_zone.phz.arn]
+    resources = [var.db_route53_zone_arn]
 
     condition {
       test     = "ForAllValues:StringEquals"
       variable = "route53:ChangeResourceRecordSetsNormalizedRecordNames"
-      values   = [aws_route53_record.db.name]
+      values   = [var.db_route53_record_name]
     }
   }
 }
 
 resource "aws_iam_policy" "workflow" {
-  name_prefix = "${local.project_name}-workflow-policy-"
+  name_prefix = "${var.project_name}-workflow-policy-"
   policy      = data.aws_iam_policy_document.workflow_role_policy.json
 }
 
@@ -115,15 +114,15 @@ resource "aws_sfn_state_machine" "workflow" {
     aws_iam_role_policy_attachments_exclusive.workflow # Ensure policy is attached to the role
   ]
 
-  name_prefix = "${local.project_name}-workflow-"
+  name_prefix = "${var.project_name}-workflow-"
   role_arn    = aws_iam_role.workflow.arn
   definition = templatefile(
     local.workflow_template_path,
     {
-      db_id_prefix           = local.db_id_prefix
+      db_id_prefix           = var.db_id_prefix
       lambda_function_name   = aws_lambda_function.lambda.function_name
-      route53_hosted_zone_id = aws_route53_zone.phz.zone_id
-      route53_domain_name    = aws_route53_record.db.name
+      route53_hosted_zone_id = var.db_route53_zone_arn
+      route53_domain_name    = var.db_route53_record_name
     }
   )
   publish = true
@@ -136,7 +135,7 @@ resource "aws_sfn_state_machine" "workflow" {
 }
 
 resource "aws_sfn_alias" "workflow" {
-  name = "${local.project_name}-workflow"
+  name = "${var.project_name}-workflow"
 
   routing_configuration {
     state_machine_version_arn = aws_sfn_state_machine.workflow.state_machine_version_arn
@@ -145,6 +144,6 @@ resource "aws_sfn_alias" "workflow" {
 }
 
 resource "aws_cloudwatch_log_group" "workflow" {
-  name_prefix       = "/aws/vendedlogs/states/${local.project_name}-workflow-"
+  name_prefix       = "/aws/vendedlogs/states/${var.project_name}-workflow-"
   retention_in_days = 1
 }

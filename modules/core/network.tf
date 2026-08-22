@@ -4,7 +4,7 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = {
-    Name = "${local.project_name}-vpc"
+    Name = "${var.project_name}-vpc"
   }
 }
 
@@ -14,7 +14,7 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${local.project_name}-public"
+    Name = "${var.project_name}-public"
   }
 }
 
@@ -25,7 +25,7 @@ resource "aws_subnet" "private_1" {
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
-    Name = "${local.project_name}-private"
+    Name = "${var.project_name}-private"
   }
 }
 
@@ -35,7 +35,7 @@ resource "aws_subnet" "private_2" {
   availability_zone = data.aws_availability_zones.available.names[1]
 
   tags = {
-    Name = "${local.project_name}-private"
+    Name = "${var.project_name}-private"
   }
 }
 
@@ -43,7 +43,7 @@ resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "${local.project_name}-igw"
+    Name = "${var.project_name}-igw"
   }
 }
 
@@ -56,7 +56,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "${local.project_name}-public-rt"
+    Name = "${var.project_name}-public-rt"
   }
 }
 

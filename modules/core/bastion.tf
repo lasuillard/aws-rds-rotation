@@ -22,14 +22,14 @@ resource "aws_instance" "bastion" {
   instance_type = "t4g.micro"
 
   tags = {
-    Name = "${local.project_name}-bastion"
+    Name = "${var.project_name}-bastion"
   }
 }
 
 resource "aws_security_group" "bastion" {
   vpc_id = aws_vpc.main.id
 
-  name_prefix = "${local.project_name}-bastion-sg-"
+  name_prefix = "${var.project_name}-bastion-sg-"
   description = "Security group for the bastion host"
 }
 

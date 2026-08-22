@@ -5,7 +5,7 @@ locals {
 
   # To track the state of the database restored/deleted externally,
   # we need to follow the RDS instance identifier using the pattern matching
-  db_id_prefix  = "${local.project_name}-db-"
+  db_id_prefix  = "${var.project_name}-db-"
   db_id_default = "${local.db_id_prefix}00000000t000000"
 
   db_instance_ids = [
@@ -53,14 +53,14 @@ resource "aws_db_instance" "db" {
 }
 
 resource "aws_db_subnet_group" "db" {
-  name_prefix = "${local.project_name}-db-subnet-group-"
+  name_prefix = "${var.project_name}-db-subnet-group-"
   subnet_ids  = [aws_subnet.private_1.id, aws_subnet.private_2.id]
 }
 
 resource "aws_security_group" "db" {
   vpc_id = aws_vpc.main.id
 
-  name_prefix = "${local.project_name}-db-sg-"
+  name_prefix = "${var.project_name}-db-sg-"
   description = "Database security group"
 }
 
@@ -104,5 +104,5 @@ resource "aws_db_snapshot" "base" {
   }
 
   db_instance_identifier = aws_db_instance.db.identifier
-  db_snapshot_identifier = "${local.project_name}-base-snapshot"
+  db_snapshot_identifier = "${var.project_name}-base-snapshot"
 }

@@ -1,3 +1,8 @@
+variable "project_name" {
+  type        = string
+  description = "Project name used for naming resources"
+}
+
 variable "vpc_cidr_block" {
   type        = string
   description = "VPC CIDR block"
