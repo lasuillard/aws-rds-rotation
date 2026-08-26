@@ -30,7 +30,6 @@ data "aws_db_instances" "find_db" {
 }
 
 resource "aws_db_instance" "db" {
-  // TODO: Identifier will change after rotation, so state should be persisted after rotation
   identifier = local.db_id_dynamic
 
   engine                              = "postgres"
