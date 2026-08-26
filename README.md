@@ -6,7 +6,6 @@ A demo project for automating RDS database recreation from a snapshot.
 
 RDS rotation is a process of replacing a database with a new one from a snapshot. The primary usage is to create a new development database from a production database snapshot with sensitive data masked and scrubbed.
 
-<!-- TODO: Add diagrams, environment setup with Nix, etc. -->
 
 ## 📜 License
 
