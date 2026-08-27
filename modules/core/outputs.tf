@@ -28,7 +28,7 @@ output "db_route53_zone_arn" {
   value       = aws_route53_zone.phz.arn
 }
 
-output db_route53_zone_id {
+output "db_route53_zone_id" {
   description = "Hosted zone ID for the Route53 record of the RDS instance."
   value       = aws_route53_zone.phz.zone_id
 }
