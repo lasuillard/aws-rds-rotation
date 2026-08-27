@@ -87,9 +87,9 @@ resource "null_resource" "db_initializer" {
       # Prevent connection stuck due to network issues
       PGCONNECT_TIMEOUT = 30
     }
-    command = <<CMD
-'${path.module}/scripts/init-db.sh' 5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
-CMD
+    command = <<-CMD
+      '${path.module}/scripts/init-db.sh' 5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
+    CMD
   }
 }
 

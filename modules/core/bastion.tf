@@ -59,8 +59,8 @@ resource "null_resource" "wait_for_bastion_ready" {
   depends_on = [aws_instance.bastion]
 
   provisioner "local-exec" {
-    command = <<CMD
-'${path.module}/scripts/wait-for-ready.sh' '${aws_instance.bastion.id}' \
-CMD
+    command = <<-CMD
+      '${path.module}/scripts/wait-for-ready.sh' '${aws_instance.bastion.id}' \
+    CMD
   }
 }
