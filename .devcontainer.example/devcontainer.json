@@ -10,7 +10,7 @@
     "vscode": {
       "extensions": [
         "EditorConfig.EditorConfig",
-        "OpenTofu.vscode-opentofu",
+        "HashiCorp.terraform",
         "amazonwebservices.aws-toolkit-vscode"
       ]
     }

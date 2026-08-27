@@ -1,6 +1,6 @@
 {
-  "[opentofu][opentofu-vars]": {
-    "editor.defaultFormatter": "opentofu.vscode-opentofu"
+  "[terraform][terraform-vars]": {
+    "editor.defaultFormatter": "HashiCorp.terraform"
   },
   "json.schemas": [
     {

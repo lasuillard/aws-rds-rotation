@@ -13,7 +13,12 @@
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          inherit system;
+          config = {
+            allowUnfree = true;
+          };
+        };
 
         # BUG: https://github.com/nixos/nixpkgs/issues/522307
         fixedPipx = pkgs.python3Packages.toPythonApplication (
@@ -26,7 +31,7 @@
         packages = {
           inherit (pkgs)
             pre-commit
-            opentofu
+            terraform
             awscli2
             ssm-session-manager-plugin
             postgresql_18

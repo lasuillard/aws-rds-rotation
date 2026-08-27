@@ -1,7 +1,7 @@
 {
   "recommendations": [
     "EditorConfig.EditorConfig",
-    "opentofu.vscode-opentofu",
+    "HashiCorp.terraform",
     "amazonwebservices.aws-toolkit-vscode"
   ]
 }

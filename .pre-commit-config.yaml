@@ -8,17 +8,17 @@ repos:
 
   - repo: local
     hooks:
-      - id: tofu-fmt
-        name: tofu fmt
+      - id: terraform-fmt
+        name: terraform fmt
         language: system
         types: [terraform]
         pass_filenames: false
-        entry: tofu fmt
+        entry: terraform fmt
         args: [-write]
 
-      - id: tofu-validate
-        name: tofu validate
+      - id: terraform-validate
+        name: terraform validate
         language: system
         types: [terraform]
         pass_filenames: false
-        entry: tofu validate
+        entry: terraform validate
