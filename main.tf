@@ -26,5 +26,6 @@ module "workflow" {
   db_id_prefix           = module.core.db_id_prefix
   db_security_group_id   = module.core.db_security_group_id
   db_route53_zone_arn    = module.core.db_route53_zone_arn
+  db_route53_zone_id     = module.core.db_route53_zone_id
   db_route53_record_name = module.core.db_route53_record_name
 }

@@ -121,7 +121,7 @@ resource "aws_sfn_state_machine" "workflow" {
     {
       db_id_prefix           = var.db_id_prefix
       lambda_function_name   = aws_lambda_function.lambda.function_name
-      route53_hosted_zone_id = var.db_route53_zone_arn
+      route53_hosted_zone_id = var.db_route53_zone_id
       route53_domain_name    = var.db_route53_record_name
     }
   )

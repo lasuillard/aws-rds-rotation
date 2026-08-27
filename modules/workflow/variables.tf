@@ -28,6 +28,11 @@ variable "db_route53_zone_arn" {
   description = "Hosted zone ARN for the Route53 record of the RDS instance"
 }
 
+variable "db_route53_zone_id" {
+  type        = string
+  description = "Hosted zone ID for the Route53 record of the RDS instance"
+}
+
 variable "db_route53_record_name" {
   type        = string
   description = "Route53 record name for the RDS instance"
