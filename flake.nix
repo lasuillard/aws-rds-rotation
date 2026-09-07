@@ -29,19 +29,21 @@
       in
       {
         packages = {
+          # Tools used in CI/CD pipelines
           inherit (pkgs)
+            ;
+        };
+
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
             pre-commit
             terraform
             awscli2
             ssm-session-manager-plugin
             postgresql_18
-            ;
+            fixedPipx
+          ];
 
-          inherit fixedPipx;
-        };
-
-        devShells.default = pkgs.mkShell {
-          packages = builtins.attrValues self.packages.${system};
           shellHook = ''
             pre-commit install
           '';
