@@ -1,9 +1,9 @@
 provider "aws" {
-  region = "ap-northeast-2"
+  region = var.region
 
   default_tags {
     tags = {
-      Project      = "aws-rds-rotation"
+      Project      = var.project_name
       Source       = "https://github.com/lasuillard/aws-rds-rotation"
       "Managed-By" = "Terraform"
     }
