@@ -14,7 +14,7 @@ repos:
         types: [terraform]
         pass_filenames: false
         entry: terraform fmt
-        args: [-write]
+        args: [-recursive, -write]
 
       - id: terraform-validate
         name: terraform validate
