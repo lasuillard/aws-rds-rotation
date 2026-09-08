@@ -1,3 +1,4 @@
+---
 QueryLanguage: JSONata
 Comment: aws-rds-rotation
 StartAt: Prepare
@@ -19,34 +20,38 @@ States:
             "route53HostedZoneId": "${route53_hosted_zone_id}",
             "route53DomainName": "${route53_domain_name}"
           }
-        )
-         %}
+        ) %}
   Find old database:
     Type: Task
     Arguments: {}
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Next: Check instance count
     Assign:
-      matchedInstances: "{% $exists($states.result.DbInstances[0]) ? $states.result.DbInstances[$substring(DbInstanceIdentifier,
-        0, $length($inputs.dbIdPrefix)) = $inputs.dbIdPrefix] : [] %}"
+      matchedInstances: |-
+        {% (
+          $exists($states.result.DbInstances[0])
+            ? $states.result.DbInstances[$substring(DbInstanceIdentifier, 0, $length($inputs.dbIdPrefix)) = $inputs.dbIdPrefix]
+            : []
+        ) %}
   Check instance count:
     Type: Choice
     Choices:
     - Next: Too many instances (>1)
-      Condition: "{% (($count($matchedInstances)) > (1) and $not($exists($inputs.newDbIdRaw)))
-        %}"
+      Condition: "{% (($count($matchedInstances)) > (1) and $not($exists($inputs.newDbIdRaw))) %}"
     Default: Restore DB instance from snapshot
     Assign:
       oldDb: "{% $exists($matchedInstances[0]) ? $matchedInstances[0] : null %}"
-      oldDbId: "{% $exists($matchedInstances[0]) ? $matchedInstances[0].DbInstanceIdentifier
-        : null %}"
+      oldDbId: "{% $exists($matchedInstances[0]) ? $matchedInstances[0].DbInstanceIdentifier : null %}"
   Too many instances (>1):
     Type: Fail
     Error: TooManyInstances
-    Cause: '{% "There are more than 1 instances (" & $count($matchedInstances) & ")
-      found. Which might indicate that another workflow in in progress. Retry later."
-      %}'
-    Comment: If there are more than 1 instances, it could be a sign of that another
+    Cause: |-
+      {% (
+        "There are more than 1 instances (" & $count($matchedInstances) & ")
+        found. Which might indicate that another workflow in in progress. Retry later."
+      ) %}
+    Comment: |
+      If there are more than 1 instances, it could be a sign of that another
       workflow is in progress. If you meant to continue the ongoing workflow from
       failure, set input newDbId to the identifier of created instance.
   Restore DB instance from snapshot:
@@ -78,8 +83,7 @@ States:
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Assign:
       dbStatus: "{% $states.result.DbInstances[0].DbInstanceStatus %}"
-      dbDomain: "{% $states.result.DbInstances[0].Endpoint ? $states.result.DbInstances[0].Endpoint.Address
-        : 'n/a' %}"
+      dbDomain: "{% $states.result.DbInstances[0].Endpoint ? $states.result.DbInstances[0].Endpoint.Address : 'n/a' %}"
     Next: Is DB instance available?
   Is DB instance available?:
     Type: Choice
@@ -87,8 +91,10 @@ States:
     - Condition: '{% ($dbStatus) = ("available") %}'
       Next: Run SQL queries
     - Next: Wait for DB instance ready
-      Condition: '{% $dbStatus in ["creating", "starting", "storage-initialization",
-        "configuring-enhanced-monitoring", "modifying"] %}'
+      Condition:
+        '{% (
+          $dbStatus in ["creating", "starting", "storage-initialization", "configuring-enhanced-monitoring", "modifying"]
+        ) %}'
     Default: Instance restoration failed
   Instance restoration failed:
     Type: Fail
