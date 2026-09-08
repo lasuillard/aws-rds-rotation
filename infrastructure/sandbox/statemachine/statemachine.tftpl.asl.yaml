@@ -10,19 +10,18 @@ States:
     Assign:
       inputs: |-
         {% (
-          $dbIdPrefix := "${db_id_prefix}";
+          $dbIdPrefix := "${tftpl.db_id_prefix}";
           {
             "dbIdPrefix": $dbIdPrefix,
-            "newDbIdRaw": $states.input.newDbId,
-            "newDbId": $exists($states.input.newDbId) ? $states.input.newDbId : $dbIdPrefix & $now("[Y0001][M01][D01]t[H01][m01][s01]", "+0900"),
-            "snapshotId": $states.input.snapshotId,
-            "lambdaFunctionName": "${lambda_function_name}",
-            "route53HostedZoneId": "${route53_hosted_zone_id}",
-            "route53DomainName": "${route53_domain_name}"
+            "newDbId": $exists($states.input.newDbId)
+              ? $states.input.newDbId
+              : $dbIdPrefix & $now("[Y0001][M01][D01]t[H01][m01][s01]", "+0900"),
+            "snapshotId": $states.input.snapshotId
           }
         ) %}
   Find old database:
     Type: Task
+    Comment: Find old database instances matching the specified DB ID prefix
     Arguments: {}
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Next: Check instance count
@@ -35,9 +34,12 @@ States:
         ) %}
   Check instance count:
     Type: Choice
+    Comment: |
+      Check if there are too many old database instances matching the specified DB ID prefix
+      to prevent conflicts with ongoing workflows
     Choices:
     - Next: Too many instances (>1)
-      Condition: "{% (($count($matchedInstances)) > (1) and $not($exists($inputs.newDbIdRaw))) %}"
+      Condition: "{% (($count($matchedInstances)) > (1) and $not($exists($inputs.newDbId))) %}"
     Default: Restore DB instance from snapshot
     Assign:
       oldDb: "{% $exists($matchedInstances[0]) ? $matchedInstances[0] : null %}"
@@ -59,9 +61,10 @@ States:
     Arguments:
       DbInstanceIdentifier: "{% $inputs.newDbId %}"
       DbSnapshotIdentifier: "{% $inputs.snapshotId %}"
-      DbSubnetGroupName: "{% $oldDb.DbSubnetGroup.DbSubnetGroupName %}"
-      PubliclyAccessible: "{% $oldDb.PubliclyAccessible %}"
-      VpcSecurityGroupIds: "{% $oldDb.VpcSecurityGroups[].VpcSecurityGroupId %}"
+      DbSubnetGroupName: '{% $oldDb ? $oldDb.DbSubnetGroup.DbSubnetGroupName : "${tftpl.db_subnet_group_name}" %}'
+      PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible : "${tftpl.publicly_accessible}" %}'
+      VpcSecurityGroupIds: |-
+        {% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId : ["${join("\", \"", tftpl.vpc_security_group_ids)}"] %}
       Tags:
       - Key: Project
         Value: aws-rds-rotation
@@ -108,7 +111,7 @@ States:
     Output: "{% $states.result.Payload %}"
     Arguments:
       Payload: "{% $states.input %}"
-      FunctionName: "{% $inputs.lambdaFunctionName %}"
+      FunctionName: "${tftpl.lambda_function_name}"
     Retry:
     - ErrorEquals:
       - Lambda.ServiceException
@@ -127,12 +130,12 @@ States:
         Changes:
         - Action: UPSERT
           ResourceRecordSet:
-            Name: "{% $inputs.route53DomainName %}"
+            Name: "${tftpl.route53_domain_name}"
             Type: CNAME
             Ttl: 60
             ResourceRecords:
             - Value: "{% $dbDomain %}"
-      HostedZoneId: "{% $inputs.route53HostedZoneId %}"
+      HostedZoneId: "${tftpl.route53_hosted_zone_id}"
     Resource: arn:aws:states:::aws-sdk:route53:changeResourceRecordSets
     Next: Old instance exists?
   Old instance exists?:

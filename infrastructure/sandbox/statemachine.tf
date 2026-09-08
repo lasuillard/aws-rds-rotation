@@ -119,10 +119,16 @@ resource "aws_sfn_state_machine" "workflow" {
   definition = jsonencode(yamldecode(templatefile(
     local.workflow_template_path,
     {
-      db_id_prefix           = local.db_id_prefix
-      lambda_function_name   = aws_lambda_function.lambda.function_name
-      route53_hosted_zone_id = aws_route53_zone.phz.id
-      route53_domain_name    = var.route53_db_record_name
+      # Give unique namespace for template variables to distinguish them in the template
+      tftpl = {
+        db_id_prefix           = local.db_id_prefix
+        db_subnet_group_name   = aws_db_subnet_group.db.name
+        publicly_accessible    = false
+        vpc_security_group_ids = [aws_security_group.db.id]
+        lambda_function_name   = aws_lambda_function.lambda.function_name
+        route53_hosted_zone_id = aws_route53_zone.phz.id
+        route53_domain_name    = var.route53_db_record_name
+      }
     }
   )))
   publish = true
