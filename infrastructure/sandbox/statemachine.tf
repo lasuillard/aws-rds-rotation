@@ -1,5 +1,5 @@
 locals {
-  workflow_template_path = "${path.module}/statemachine/statemachine.tftpl.asl.json"
+  workflow_template_path = "${path.module}/statemachine/statemachine.tftpl.asl.yaml"
 
   workflow_template_raw_content = file(local.workflow_template_path)
 
@@ -72,7 +72,7 @@ data "aws_iam_policy_document" "workflow_role_policy" {
       "rds:AddTagsToResource"
     ]
     resources = [
-      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${var.db_id_prefix}*",
+      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
       "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:snapshot:*"
     ]
   }
@@ -80,19 +80,19 @@ data "aws_iam_policy_document" "workflow_role_policy" {
   statement {
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
-    resources = [var.db_route53_zone_arn]
+    resources = [aws_route53_zone.phz.arn]
   }
 
   statement {
     sid       = "UpdateRoute53RecordForDatabase"
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
-    resources = [var.db_route53_zone_arn]
+    resources = [aws_route53_zone.phz.arn]
 
     condition {
       test     = "ForAllValues:StringEquals"
       variable = "route53:ChangeResourceRecordSetsNormalizedRecordNames"
-      values   = [var.db_route53_record_name]
+      values   = [var.route53_db_record_name]
     }
   }
 }
@@ -116,15 +116,21 @@ resource "aws_sfn_state_machine" "workflow" {
 
   name_prefix = "${var.project_name}-workflow-"
   role_arn    = aws_iam_role.workflow.arn
-  definition = templatefile(
+  definition = jsonencode(yamldecode(templatefile(
     local.workflow_template_path,
     {
-      db_id_prefix           = var.db_id_prefix
-      lambda_function_name   = aws_lambda_function.lambda.function_name
-      route53_hosted_zone_id = var.db_route53_zone_id
-      route53_domain_name    = var.db_route53_record_name
+      # Give unique namespace for template variables to distinguish them in the template
+      tftpl = {
+        db_id_prefix           = local.db_id_prefix
+        db_subnet_group_name   = aws_db_subnet_group.db.name
+        publicly_accessible    = false
+        vpc_security_group_ids = [aws_security_group.db.id]
+        lambda_function_name   = aws_lambda_function.lambda.function_name
+        route53_hosted_zone_id = aws_route53_zone.phz.id
+        route53_domain_name    = var.route53_db_record_name
+      }
     }
-  )
+  )))
   publish = true
 
   logging_configuration {

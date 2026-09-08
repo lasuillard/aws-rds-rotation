@@ -22,7 +22,7 @@ data "aws_iam_policy_document" "lambda_role_policy" {
     effect  = "Allow"
     actions = ["rds:ModifyDBInstance", "rds-db:connect"]
     resources = [
-      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${var.db_id_prefix}*",
+      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
     ]
   }
 }
@@ -57,13 +57,13 @@ resource "aws_lambda_function" "lambda" {
   handler          = "main.lambda_handler"
 
   vpc_config {
-    subnet_ids         = var.lambda_subnets
+    subnet_ids         = [aws_subnet.private_1.id]
     security_group_ids = [aws_security_group.lambda.id]
   }
 }
 
 resource "aws_security_group" "lambda" {
-  vpc_id = var.vpc_id
+  vpc_id = aws_vpc.main.id
 
   name_prefix = "${var.project_name}-lambda-sg-"
   description = "Security group for the Lambda functions"
@@ -77,7 +77,7 @@ resource "aws_vpc_security_group_egress_rule" "lambda_to_rds" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  referenced_security_group_id = var.db_security_group_id
+  referenced_security_group_id = aws_security_group.db.id
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
