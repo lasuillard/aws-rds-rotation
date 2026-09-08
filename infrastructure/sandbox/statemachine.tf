@@ -1,5 +1,5 @@
 locals {
-  workflow_template_path = "${path.module}/statemachine/statemachine.tftpl.asl.json"
+  workflow_template_path = "${path.module}/statemachine/statemachine.tftpl.asl.yaml"
 
   workflow_template_raw_content = file(local.workflow_template_path)
 
@@ -116,7 +116,7 @@ resource "aws_sfn_state_machine" "workflow" {
 
   name_prefix = "${var.project_name}-workflow-"
   role_arn    = aws_iam_role.workflow.arn
-  definition = templatefile(
+  definition = jsonencode(yamldecode(templatefile(
     local.workflow_template_path,
     {
       db_id_prefix           = local.db_id_prefix
@@ -124,7 +124,7 @@ resource "aws_sfn_state_machine" "workflow" {
       route53_hosted_zone_id = aws_route53_zone.phz.id
       route53_domain_name    = var.route53_db_record_name
     }
-  )
+  )))
   publish = true
 
   logging_configuration {
