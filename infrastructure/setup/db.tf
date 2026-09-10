@@ -14,21 +14,21 @@ locals {
 resource "aws_db_instance" "db" {
   identifier = "${var.project_name}-initial"
 
-  engine                              = "postgres"
-  engine_version                      = "18"
-  db_subnet_group_name                = aws_db_subnet_group.db.name
-  vpc_security_group_ids              = [aws_security_group.db.id]
-  multi_az                            = false
-  iam_database_authentication_enabled = true
+  engine                 = "postgres"
+  engine_version         = "18"
+  db_subnet_group_name   = aws_db_subnet_group.db.name
+  vpc_security_group_ids = [aws_security_group.db.id]
+  multi_az               = false
 
   # Free-tier eligible
   instance_class    = "db.t4g.micro"
   storage_type      = "gp2"
   allocated_storage = 20
 
-  db_name  = local.db_name
-  username = local.db_username
-  password = local.db_password
+  db_name                             = local.db_name
+  username                            = local.db_username
+  password                            = local.db_password
+  iam_database_authentication_enabled = true
 
   # Create final snapshot (if configured)
   skip_final_snapshot       = !var.create_db_snapshot
