@@ -44,6 +44,7 @@ trap cleanup EXIT
   | tee --append "$log_file"
 
 # Wait for connection establishment
+echo "Waiting for local port $local_port to be ready..." | tee --append "$log_file"
 timeout=10
 while ! (echo > "/dev/tcp/127.0.0.1/${local_port}"); do
   sleep 1
