@@ -16,35 +16,14 @@ set -o errexit
 
 ec2_instance_id="$1"
 
-response_code=-1
-attempts=0
+project_root="$(git rev-parse --show-toplevel)"
+log_file="$(realpath ${project_root}/setup.log)"
 
-echo "Waiting for instance ${ec2_instance_id} to be ready..."
-while [[ $response_code != 0 && $attempts -le 10 ]]; do
-  echo "Attempt $attempts..."
-  command_id="$(
-    aws ssm send-command \
-      --instance-ids "$ec2_instance_id" \
-      --document-name "AWS-RunShellScript" \
-      --parameters '{"commands":["echo 'ready' >> /tmp/ready.txt"]}' \
-      --query 'Command.CommandId' \
-      --output text
-  )"
-  sleep 5
-  response_code="$(
-    aws ssm get-command-invocation \
-      --command-id "$command_id" \
-      --instance-id "$ec2_instance_id" \
-      --query ResponseCode \
-      --output text
-  )"
-  if [[ "$response_code" == "0" ]]; then
-    echo "Instance ${ec2_instance_id} is ready."
-    exit 0
-  fi
-  sleep 30
-  ((attempts++))
-done
+aws_annoying_cli=(pipx run 'aws-annoying[cli]~=0.11.0')
 
-echo "Maximum attempts reached. Last response code: ${response_code}"
-exit 1
+echo "Waiting for EC2 instance $ec2_instance_id to be ready..." | tee --append "$log_file"
+"${aws_annoying_cli[@]}" ec2 wait-for-ready \
+  --instance-id "$ec2_instance_id" \
+  --max-attempts 20 \
+  --delay 15 \
+  >>"$log_file" 2>&1

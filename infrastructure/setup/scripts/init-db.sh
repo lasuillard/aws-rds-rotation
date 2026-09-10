@@ -17,25 +17,42 @@ remote_host="$3"
 remote_port="$4"
 
 project_root="$(git rev-parse --show-toplevel)"
-log_file="$(realpath ${project_root}/db-init.log)"
-aws_annoying_cli='pipx run aws-annoying~=0.10.0'
+log_file="$(realpath ${project_root}/setup.log)"
+
+aws_annoying_cli=(pipx run 'aws-annoying[cli]~=0.11.0')
+pid_file='./session-manager.pid'
 
 function cleanup() {
-  $aws_annoying_cli session-manager stop | tee --append "$log_file"
+  "${aws_annoying_cli[@]}" background kill \
+    --pid-file "$pid_file" \
+    --remove \
+    | tee --append "$log_file"
 }
 trap cleanup EXIT
 
-# Start SSH tunnel via SSM Session Manager
-$aws_annoying_cli session-manager port-forward \
+# Start tunnel via SSM Session Manager
+"${aws_annoying_cli[@]}" background run \
+  --pid-file "$pid_file" \
   --terminate-running-process \
-  --local-port "$local_port" \
-  --through "$ec2_instance_id" \
-  --remote-host "$remote_host" \
-  --remote-port "$remote_port" \
+  --log-file "$log_file" \
+  -- session-manager port-forward \
+     --local-port "$local_port" \
+     --through "$ec2_instance_id" \
+     --remote-host "$remote_host" \
+     --remote-port "$remote_port" \
+     --reason 'Initializing RDS database via SSM Session Manager' \
   | tee --append "$log_file"
 
 # Wait for connection establishment
-sleep 3
+timeout=10
+while ! (echo > "/dev/tcp/127.0.0.1/${local_port}"); do
+  sleep 1
+  timeout=$((timeout - 1))
+  if [ $timeout -le 0 ]; then
+    echo "Timeout waiting for local port $local_port to be ready" | tee --append "$log_file"
+    exit 1
+  fi
+done
 
 # Run SQL scripts
 export PGHOST="localhost"
@@ -45,8 +62,10 @@ export PGPORT="$local_port"
 pagila_schema_url='https://raw.githubusercontent.com/devrimgunduz/pagila/refs/heads/master/pagila-schema.sql'
 pagila_data_url='https://raw.githubusercontent.com/devrimgunduz/pagila/refs/heads/master/pagila-data.sql'
 
+echo "Initializing Pagila schema..." | tee --append "$log_file"
 curl --fail --silent --show-error --location \
-  "$pagila_schema_url" | psql | tee --append "$log_file"
+  "$pagila_schema_url" | psql >>"$log_file" 2>&1
 
+echo "Initializing Pagila data..." | tee --append "$log_file"
 curl --fail --silent --show-error --location \
-  "$pagila_data_url" | psql | tee --append "$log_file"
+  "$pagila_data_url" | psql >>"$log_file" 2>&1

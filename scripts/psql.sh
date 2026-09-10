@@ -18,25 +18,43 @@ remote_port="$4"
 
 project_root="$(git rev-parse --show-toplevel)"
 log_file="$(realpath ${project_root}/psql.log)"
+
 aws_annoying_cli='pipx run aws-annoying~=0.10.0'
+pid_file='./psql.pid'
 
 function cleanup() {
-  $aws_annoying_cli session-manager stop | tee --append "$log_file"
+  "${aws_annoying_cli[@]}" background kill \
+    --pid-file "$pid_file" \
+    --remove \
+    | tee --append "$log_file"
 }
 trap cleanup EXIT
 
-# Start SSH tunnel via SSM Session Manager
-$aws_annoying_cli session-manager port-forward \
+# Start tunnel via SSM Session Manager
+"${aws_annoying_cli[@]}" background run \
+  --pid-file "$pid_file" \
   --terminate-running-process \
-  --local-port "$local_port" \
-  --through "$ec2_instance_id" \
-  --remote-host "$remote_host" \
-  --remote-port "$remote_port" \
+  --log-file "$log_file" \
+  -- session-manager port-forward \
+     --local-port "$local_port" \
+     --through "$ec2_instance_id" \
+     --remote-host "$remote_host" \
+     --remote-port "$remote_port" \
+     --reason 'Initializing RDS database via SSM Session Manager' \
   | tee --append "$log_file"
 
-sleep 3
+# Wait for connection establishment
+timeout=10
+while ! (echo > "/dev/tcp/127.0.0.1/${local_port}"); do
+  sleep 1
+  timeout=$((timeout - 1))
+  if [ $timeout -le 0 ]; then
+    echo "Timeout waiting for local port $local_port to be ready" | tee --append "$log_file"
+    exit 1
+  fi
+done
 
-# Run psql
+# Run psql, replacing current shell with the psql process
 export PGHOST="localhost"
 export PGPORT="$local_port"
 
