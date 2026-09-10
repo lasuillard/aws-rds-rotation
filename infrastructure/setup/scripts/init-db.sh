@@ -55,7 +55,7 @@ while ! (echo > "/dev/tcp/127.0.0.1/${local_port}"); do
 done
 
 # Run SQL scripts
-export PGHOST="localhost"
+export PGHOST='localhost'
 export PGPORT="$local_port"
 
 # Pagila dataset (https://github.com/devrimgunduz/pagila)

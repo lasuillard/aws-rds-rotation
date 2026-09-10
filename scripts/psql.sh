@@ -55,7 +55,7 @@ while ! (echo > "/dev/tcp/127.0.0.1/${local_port}"); do
 done
 
 # Run psql, replacing current shell with the psql process
-export PGHOST="localhost"
+export PGHOST='localhost'
 export PGPORT="$local_port"
 
 exec psql "${@:5}"
