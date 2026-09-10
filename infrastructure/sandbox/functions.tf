@@ -18,9 +18,9 @@ resource "aws_iam_role" "lambda" {
 
 data "aws_iam_policy_document" "lambda_role_policy" {
   statement {
-    sid     = "UpdateRDSInstanceAndConnectIAMAuth"
+    sid     = "UpdateRDSInstance"
     effect  = "Allow"
-    actions = ["rds:ModifyDBInstance", "rds-db:connect"]
+    actions = ["rds:ModifyDBInstance"]
     resources = [
       "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
     ]

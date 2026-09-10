@@ -25,10 +25,9 @@ resource "aws_db_instance" "db" {
   storage_type      = "gp2"
   allocated_storage = 20
 
-  db_name                             = local.db_name
-  username                            = local.db_username
-  password                            = local.db_password
-  iam_database_authentication_enabled = true
+  db_name  = local.db_name
+  username = local.db_username
+  password = local.db_password
 
   # Create final snapshot (if configured)
   skip_final_snapshot       = !var.create_db_snapshot
