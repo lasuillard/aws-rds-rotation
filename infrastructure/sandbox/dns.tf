@@ -10,7 +10,7 @@ resource "aws_route53_zone" "phz" {
 
 resource "aws_route53_record" "db" {
   lifecycle {
-    ignore_changes = [records]
+    ignore_changes = [ttl, records]
   }
 
   zone_id = aws_route53_zone.phz.zone_id
