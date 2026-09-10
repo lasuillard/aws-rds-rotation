@@ -19,7 +19,7 @@ remote_port="$4"
 project_root="$(git rev-parse --show-toplevel)"
 log_file="$(realpath ${project_root}/psql.log)"
 
-aws_annoying_cli='pipx run aws-annoying~=0.10.0'
+aws_annoying_cli=(pipx run 'aws-annoying[cli]~=0.11.0')
 pid_file='./psql.pid'
 
 function cleanup() {
