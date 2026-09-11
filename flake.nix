@@ -21,7 +21,7 @@
         };
 
         # BUG: https://github.com/nixos/nixpkgs/issues/522307
-        fixedPipx = pkgs.python3Packages.toPythonApplication (
+        fixedPipx = pkgs.python314Packages.toPythonApplication (
           pkgs.python3Packages.pipx.overridePythonAttrs (oldAttrs: {
             doCheck = false;
           })
@@ -41,6 +41,7 @@
             awscli2
             ssm-session-manager-plugin
             postgresql_18
+            python314
             fixedPipx
           ];
 
