@@ -6,7 +6,7 @@ States:
   Check DB instance status:
     Type: Task
     Arguments:
-      DbInstanceIdentifier: "{% $states.input.newDbId %}"
+      DbInstanceIdentifier: "{% $states.input.dbId %}"
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Assign:
       dbStatus: "{% $states.result.DbInstances[0].DbInstanceStatus %}"

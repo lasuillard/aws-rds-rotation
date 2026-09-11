@@ -74,7 +74,7 @@ States:
       StateMachineArn: ${tftpl.wait_for_rds_ready_state_machine_arn}
       Input:
         AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
-        newDbId: "{% $inputs.newDbId %}"
+        dbId: "{% $inputs.newDbId %}"
         waitSeconds: 30
     Next: Run SQL queries
     Catch:
