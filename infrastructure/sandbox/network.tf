@@ -47,6 +47,21 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
+# NAT is required for private subnets to access the internet, such as installing
+# necessary packages or interacting with AWS API.
+resource "aws_eip" "nat" {
+  depends_on = [aws_internet_gateway.igw]
+
+  domain = "vpc"
+}
+
+resource "aws_nat_gateway" "nat" {
+  depends_on = [aws_internet_gateway.igw]
+
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public.id
+}
+
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
