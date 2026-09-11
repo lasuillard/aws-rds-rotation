@@ -78,12 +78,6 @@ data "aws_iam_policy_document" "workflow_role_policy" {
   }
 
   statement {
-    effect    = "Allow"
-    actions   = ["route53:ChangeResourceRecordSets"]
-    resources = [aws_route53_zone.phz.arn]
-  }
-
-  statement {
     sid       = "UpdateRoute53RecordForDatabase"
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
