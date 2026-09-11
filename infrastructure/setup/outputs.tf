@@ -5,6 +5,7 @@ output "base_snapshot_id" {
 
 output "psql_command" {
   description = "`psql` command to connect to the database."
+  sensitive   = true
   value       = <<-CMD
     PGDATABASE='${local.db_name}' \
     PGUSER='${local.db_username}' \

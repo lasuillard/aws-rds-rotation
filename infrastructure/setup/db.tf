@@ -2,13 +2,20 @@
 locals {
   db_host = split(":", aws_db_instance.db.endpoint)[0]
   db_port = split(":", aws_db_instance.db.endpoint)[1]
-  db_name = "demo"
 
-  # CAUTION: Demo purpose only!
-  db_username = "dbadmin"
-  db_password = "sup5r3s3cr3t"
+  db_name     = var.db_name
+  db_username = var.db_username
+  db_password = coalesce(var.db_password, random_password.db[0].result)
 
   db_snapshot_identifier = coalesce(var.db_snapshot_identifier, "${var.project_name}-base-snapshot")
+}
+
+resource "random_password" "db" {
+  count = var.db_password == null ? 1 : 0
+
+  length           = 28
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 resource "aws_db_instance" "db" {
