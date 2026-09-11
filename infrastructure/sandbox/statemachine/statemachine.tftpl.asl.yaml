@@ -1,14 +1,14 @@
----
 QueryLanguage: JSONata
-Comment: aws-rds-rotation
+Comment: RDS rotation main workflow.
 StartAt: Prepare
+TimeoutSeconds: 3600
 States:
   Prepare:
     Type: Wait
     Seconds: 5
     Next: Find old database
     Assign:
-      inputs: |-
+      inputs: >-
         {% (
           $dbIdPrefix := "${tftpl.db_id_prefix}";
           {
@@ -26,7 +26,7 @@ States:
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Next: Check instance count
     Assign:
-      matchedInstances: |-
+      matchedInstances: >-
         {% (
           $exists($states.result.DbInstances[0])
             ? $states.result.DbInstances[$substring(DbInstanceIdentifier, 0, $length($inputs.dbIdPrefix)) = $inputs.dbIdPrefix]
@@ -34,116 +34,98 @@ States:
         ) %}
   Check instance count:
     Type: Choice
-    Comment: |
-      Check if there are too many old database instances matching the specified DB ID prefix
-      to prevent conflicts with ongoing workflows
+    Comment: >
+      Check if there are too many old database instances matching the specified
+      DB ID prefix to prevent conflicts with ongoing workflows.
     Choices:
-    - Next: Too many instances (>1)
-      Condition: "{% (($count($matchedInstances)) > (1) and $not($exists($inputs.newDbId))) %}"
+      - Next: Unrecoverable error
+        Condition: "{% (($count($matchedInstances)) > (1) and
+          $not($exists($inputs.newDbId))) %}"
     Default: Restore DB instance from snapshot
     Assign:
       oldDb: "{% $exists($matchedInstances[0]) ? $matchedInstances[0] : null %}"
-      oldDbId: "{% $exists($matchedInstances[0]) ? $matchedInstances[0].DbInstanceIdentifier : null %}"
-  Too many instances (>1):
-    Type: Fail
-    Error: TooManyInstances
-    Cause: |-
-      {% (
-        "There are more than 1 instances (" & $count($matchedInstances) & ")
-        found. Which might indicate that another workflow in in progress. Retry later."
-      ) %}
-    Comment: |
-      If there are more than 1 instances, it could be a sign of that another
-      workflow is in progress. If you meant to continue the ongoing workflow from
-      failure, set input newDbId to the identifier of created instance.
+      oldDbId: "{% $exists($matchedInstances[0]) ?
+        $matchedInstances[0].DbInstanceIdentifier : null %}"
   Restore DB instance from snapshot:
     Type: Task
     Arguments:
       DbInstanceIdentifier: "{% $inputs.newDbId %}"
       DbSnapshotIdentifier: "{% $inputs.snapshotId %}"
-      DbSubnetGroupName: '{% $oldDb ? $oldDb.DbSubnetGroup.DbSubnetGroupName : "${tftpl.db_subnet_group_name}" %}'
-      PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible : "${tftpl.publicly_accessible}" %}'
-      VpcSecurityGroupIds: |-
-        {% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId : ["${join("\", \"", tftpl.vpc_security_group_ids)}"] %}
+      DbSubnetGroupName: '{% $oldDb ? $oldDb.DbSubnetGroup.DbSubnetGroupName :
+        "${tftpl.db_subnet_group_name}" %}'
+      PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible :
+        "${tftpl.publicly_accessible}" %}'
+      VpcSecurityGroupIds: '{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId
+        : ["${join("\", \"", tftpl.vpc_security_group_ids)}"] %}'
       Tags:
-      - Key: Project
-        Value: aws-rds-rotation
+        - Key: Project
+          Value: aws-rds-rotation
     Resource: arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot
-    Next: Wait for DB instance ready
+    Next: Wait for RDS ready
     Catch:
-    - ErrorEquals:
-      - Rds.DbInstanceAlreadyExistsException
-      Next: Check DB instance status
-      Comment: Skip if instance already exists
-  Wait for DB instance ready:
-    Type: Wait
-    Seconds: 30
-    Next: Check DB instance status
-  Check DB instance status:
+      - ErrorEquals:
+          - Rds.DbInstanceAlreadyExistsException
+        Next: Wait for RDS ready
+        Comment: Skip if instance already exists
+  Wait for RDS ready:
     Type: Task
+    Resource: arn:aws:states:::states:startExecution.sync:2
     Arguments:
-      DbInstanceIdentifier: "{% $inputs.newDbId %}"
-    Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
-    Assign:
-      dbStatus: "{% $states.result.DbInstances[0].DbInstanceStatus %}"
-      dbDomain: "{% $states.result.DbInstances[0].Endpoint ? $states.result.DbInstances[0].Endpoint.Address : 'n/a' %}"
-    Next: Is DB instance available?
-  Is DB instance available?:
-    Type: Choice
-    Choices:
-    - Condition: '{% ($dbStatus) = ("available") %}'
-      Next: Run SQL queries
-    - Next: Wait for DB instance ready
-      Condition:
-        '{% (
-          $dbStatus in ["creating", "starting", "storage-initialization", "configuring-enhanced-monitoring", "modifying"]
-        ) %}'
-    Default: Instance restoration failed
-  Instance restoration failed:
-    Type: Fail
-    Error: InstanceRestorationFailed
-    Cause: Failed to restore database instance from snapshot.
-    Comment: Instance restoration entered unexpected status. Please diagnose the RDS
-      events.
+      StateMachineArn: ${tftpl.wait_for_rds_ready_state_machine_arn}
+      Input:
+        AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
+        newDbId: "{% $inputs.newDbId %}"
+        waitSeconds: 30
+    Next: Run SQL queries
+    Catch:
+      - ErrorEquals:
+          - InstanceRestorationFailed
+        Next: Unrecoverable error
+        Comment: Instance restoration failed, manual intervention may be needed.
   Run SQL queries:
     Type: Task
     Resource: arn:aws:states:::lambda:invoke
     Output: "{% $states.result.Payload %}"
     Arguments:
       Payload: "{% $states.input %}"
-      FunctionName: "${tftpl.lambda_function_name}"
+      FunctionName: ${tftpl.lambda_function_name}
     Retry:
-    - ErrorEquals:
-      - Lambda.ServiceException
-      - Lambda.AWSLambdaException
-      - Lambda.SdkClientException
-      - Lambda.TooManyRequestsException
-      IntervalSeconds: 1
-      MaxAttempts: 3
-      BackoffRate: 2
-      JitterStrategy: FULL
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 1
+        MaxAttempts: 3
+        BackoffRate: 2
+        JitterStrategy: FULL
     Next: Update domain record to new database
   Update domain record to new database:
     Type: Task
     Arguments:
       ChangeBatch:
         Changes:
-        - Action: UPSERT
-          ResourceRecordSet:
-            Name: "${tftpl.route53_domain_name}"
-            Type: CNAME
-            Ttl: 60
-            ResourceRecords:
-            - Value: "{% $dbDomain %}"
-      HostedZoneId: "${tftpl.route53_hosted_zone_id}"
+          - Action: UPSERT
+            ResourceRecordSet:
+              Name: ${tftpl.route53_domain_name}
+              Type: CNAME
+              Ttl: 60
+              ResourceRecords:
+                - Value: "{% $dbDomain %}"
+      HostedZoneId: ${tftpl.route53_hosted_zone_id}
     Resource: arn:aws:states:::aws-sdk:route53:changeResourceRecordSets
     Next: Old instance exists?
   Old instance exists?:
     Type: Choice
     Choices:
-    - Next: Delete old database
-      Condition: "{% $oldDbId != null %}"
+      - Next: Delete old database
+        Condition: "{% $oldDbId != null %}"
     Default: No instance to delete
+  Unrecoverable error:
+    Type: Fail
+    Error: "{% $states.error.Error %}"
+    Cause: "{% $states.error.Cause %}"
+    Comment: Manual human intervention is needed.
   Delete old database:
     Type: Task
     Arguments:

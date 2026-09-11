@@ -1,6 +1,6 @@
 locals {
-  workflow_template_path = "${path.module}/statemachine/statemachine.tftpl.asl.yaml"
-
+  workflow_template_dir         = "${path.module}/statemachine"
+  workflow_template_path        = "${local.workflow_template_dir}/statemachine.tftpl.asl.yaml"
   workflow_template_raw_content = file(local.workflow_template_path)
 
   # Extract all workflow input names ($states.input.*)
@@ -128,10 +128,12 @@ resource "aws_sfn_state_machine" "workflow" {
         lambda_function_name   = aws_lambda_function.lambda.function_name
         route53_hosted_zone_id = aws_route53_zone.phz.id
         route53_domain_name    = var.route53_db_record_name
+
+        # Components
+        wait_for_rds_ready_state_machine_arn = aws_sfn_state_machine.wait_for_rds_ready.arn
       }
     }
   )))
-  publish = true
 
   logging_configuration {
     log_destination        = "${aws_cloudwatch_log_group.workflow.arn}:*"
@@ -140,13 +142,11 @@ resource "aws_sfn_state_machine" "workflow" {
   }
 }
 
-resource "aws_sfn_alias" "workflow" {
-  name = "${var.project_name}-workflow"
-
-  routing_configuration {
-    state_machine_version_arn = aws_sfn_state_machine.workflow.state_machine_version_arn
-    weight                    = 100
-  }
+# Sub-workflow as "wait for RDS ready" state machine
+resource "aws_sfn_state_machine" "wait_for_rds_ready" {
+  name_prefix = "${var.project_name}-wait-for-rds-ready-"
+  role_arn    = aws_iam_role.workflow.arn
+  definition  = jsonencode(yamldecode(file("${local.workflow_template_dir}/wait-for-rds-ready.asl.yaml")))
 }
 
 resource "aws_cloudwatch_log_group" "workflow" {

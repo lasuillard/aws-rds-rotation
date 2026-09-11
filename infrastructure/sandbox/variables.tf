@@ -40,6 +40,24 @@ variable "db_id_prefix" {
   default     = null
 }
 
+variable "db_port" {
+  type        = number
+  description = "Port for the database"
+  default     = 5432
+}
+
+variable "db_name" {
+  type        = string
+  description = "Name of the database"
+  default     = "demo"
+}
+
+variable "db_username" {
+  type        = string
+  description = "Master username for the database"
+  default     = "admin"
+}
+
 variable "route53_zone_name" {
   type        = string
   description = "Route53 private hosted zone name for the project"

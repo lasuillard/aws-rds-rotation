@@ -2,7 +2,7 @@ output "workflow_command" {
   description = "Command to trigger the step function workflow."
   value       = <<-CMD
     aws stepfunctions start-execution \
-      --state-machine-arn='${aws_sfn_alias.workflow.arn}' \
+      --state-machine-arn='${aws_sfn_state_machine.workflow.arn}' \
       --input file://<path-to-input-json>
   CMD
 }
