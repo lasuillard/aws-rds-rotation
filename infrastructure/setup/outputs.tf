@@ -6,9 +6,9 @@ output "base_snapshot_id" {
 output "psql_command" {
   description = "`psql` command to connect to the database."
   value       = <<-CMD
+    PGDATABASE='${local.db_name}' \
     PGUSER='${local.db_username}' \
     PGPASSWORD='${local.db_password}' \
-    PGDATABASE='${local.db_name}' \
     ${abspath("${path.module}/../../scripts/psql.sh")} \
       5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
   CMD

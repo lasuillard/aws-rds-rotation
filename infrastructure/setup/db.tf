@@ -77,9 +77,9 @@ resource "null_resource" "db_initializer" {
   # Load Pagila dataset (https://github.com/devrimgunduz/pagila)
   provisioner "local-exec" {
     environment = {
+      PGDATABASE = local.db_name
       PGUSER     = local.db_username
       PGPASSWORD = local.db_password
-      PGDATABASE = local.db_name
 
       # Prevent connection blocking due to transient network issues
       PGCONNECT_TIMEOUT = 30
