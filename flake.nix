@@ -42,6 +42,7 @@
             ssm-session-manager-plugin
             postgresql_18
             python314
+            uv
             fixedPipx
           ];
 

@@ -1,0 +1,4 @@
+[project]
+name = "masker"
+dynamic = ["version"]
+dependencies = ["psycopg[binary]==3.3.4"]

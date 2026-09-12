@@ -1,5 +1,20 @@
 locals {
   db_id_prefix = coalesce(var.db_id_prefix, "${var.project_name}-db-")
+
+  # NOTE: Hard-coded reference to default values of setup stack (for simplicity, for now)
+  db_host = aws_route53_record.db.name
+  db_port = var.db_port
+
+  db_name         = var.db_name
+  db_username     = var.db_username
+  db_password_ref = aws_secretsmanager_secret.db_password.id
+
+  # Selector tags used for assigning (while resource creation)
+  # and filtering (selecting old database) the RDS instances for this project
+  db_tags = {
+    Project      = "aws-rds-rotation"
+    "Managed-By" = "sfn"
+  }
 }
 
 check "dangling_db_instances" {
@@ -7,10 +22,7 @@ check "dangling_db_instances" {
     // NOTE: Using Terraform functions to filter the list of RDS instances
     //       to find the database restored/deleted externally because the `filters` block
     //       does not support pattern matching
-    tags = {
-      Project = "aws-rds-rotation"
-    }
-
+    tags = local.db_tags
   }
 
   assert {
@@ -21,6 +33,26 @@ check "dangling_db_instances" {
     condition     = length(data.aws_db_instances.find_db.instance_identifiers) <= 1
     error_message = "There are more than ${length(data.aws_db_instances.find_db.instance_identifiers)} RDS instances running. It may indicate a dangling instance if no running workflow exists."
   }
+}
+
+# Prohibited: slash (/), quote ('), double quote ("), at symbol (@), backtick (`)
+resource "random_password" "db_password" {
+  length           = 28
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "aws_secretsmanager_secret" "db_password" {
+  name = "${var.project_name}/rds/db-password"
+
+  # Forces immediate deletion if destroyed
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "db_password" {
+  secret_id = aws_secretsmanager_secret.db_password.id
+
+  secret_string = random_password.db_password.result
 }
 
 resource "aws_db_subnet_group" "db" {

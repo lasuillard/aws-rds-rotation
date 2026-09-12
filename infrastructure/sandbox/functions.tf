@@ -1,22 +1,17 @@
-data "aws_iam_policy_document" "lambda_assume_role_policy" {
+locals {
+  functions_dir = "${path.module}/functions"
+}
+
+data "aws_iam_policy_document" "rds_password_updater_role_policy" {
   statement {
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-
-    actions = ["sts:AssumeRole"]
+    sid     = "AllowReadSecret"
+    effect  = "Allow"
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = [
+      aws_secretsmanager_secret.db_password.arn
+    ]
   }
-}
 
-resource "aws_iam_role" "lambda" {
-  name_prefix        = "${var.project_name}-lambda-role-"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
-}
-
-data "aws_iam_policy_document" "lambda_role_policy" {
   statement {
     sid     = "UpdateRDSInstance"
     effect  = "Allow"
@@ -27,39 +22,78 @@ data "aws_iam_policy_document" "lambda_role_policy" {
   }
 }
 
-resource "aws_iam_policy" "lambda" {
-  name_prefix = "${var.project_name}-lambda-policy-"
-  policy      = data.aws_iam_policy_document.lambda_role_policy.json
+module "rds_password_updater" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "${var.project_name}-rds-password-updater"
+  description   = "Function to update the RDS instance password."
+
+  runtime = "python3.14"
+  handler = "main.lambda_handler"
+
+  source_path    = "${local.functions_dir}/rds-password-updater/main.py"
+  create_package = true
+
+  attach_policy_json = true
+  policy_json        = data.aws_iam_policy_document.rds_password_updater_role_policy.json
+
+  cloudwatch_logs_retention_in_days = 7
 }
 
-resource "aws_iam_role_policy_attachments_exclusive" "lambda" {
-  role_name = aws_iam_role.lambda.name
-  policy_arns = [
+data "aws_iam_policy_document" "masker_role_policy" {
+  statement {
+    sid     = "AllowReadSecret"
+    effect  = "Allow"
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = [
+      aws_secretsmanager_secret.db_password.arn
+    ]
+  }
+
+  statement {
+    sid     = "AllowRetrieveConnectionInfo"
+    effect  = "Allow"
+    actions = ["rds:DescribeDBInstances"]
+    resources = [
+      "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
+    ]
+  }
+}
+
+module "masker" {
+  depends_on = [data.aws_iam_policy_document.masker_role_policy]
+
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 8.0"
+
+  function_name = "${var.project_name}-masker"
+  description   = "Function to run SQL queries on the database, as part of the step function workflow."
+
+  runtime = "python3.14"
+  handler = "main.lambda_handler"
+
+  source_path = [
+    {
+      path       = "${local.functions_dir}/masker"
+      uv_install = true
+    }
+  ]
+  create_package = true
+
+  vpc_subnet_ids         = [aws_subnet.private_1.id]
+  vpc_security_group_ids = [aws_security_group.lambda.id]
+
+  attach_policies = true
+  policies = [
     "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
     "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
-    aws_iam_policy.lambda.arn
   ]
-}
 
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/functions/run-sql/src"
-  output_path = "${path.module}/functions/run-sql/function.zip"
-}
+  attach_policy_json = true
+  policy_json        = data.aws_iam_policy_document.masker_role_policy.json
 
-resource "aws_lambda_function" "lambda" {
-  function_name    = "${var.project_name}-run-sql"
-  description      = "Function to run SQL queries on the database, as part of the step function workflow."
-  role             = aws_iam_role.lambda.arn
-  runtime          = "python3.12"
-  filename         = "${path.module}/functions/run-sql/function.zip"
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  handler          = "main.lambda_handler"
-
-  vpc_config {
-    subnet_ids         = [aws_subnet.private_1.id]
-    security_group_ids = [aws_security_group.lambda.id]
-  }
+  cloudwatch_logs_retention_in_days = 7
 }
 
 resource "aws_security_group" "lambda" {
@@ -78,9 +112,4 @@ resource "aws_vpc_security_group_egress_rule" "lambda_to_rds" {
   to_port                      = 5432
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.db.id
-}
-
-resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${aws_lambda_function.lambda.function_name}"
-  retention_in_days = 1
 }

@@ -1,9 +1,8 @@
 QueryLanguage: JSONata
 Comment: RDS rotation main workflow.
-StartAt: Prepare
-TimeoutSeconds: 3600
+StartAt: Initialize
 States:
-  Prepare:
+  Initialize:
     Type: Wait
     Seconds: 5
     Next: Find old database
@@ -16,9 +15,11 @@ States:
             "newDbId": $exists($states.input.newDbId)
               ? $states.input.newDbId
               : $dbIdPrefix & $now("[Y0001][M01][D01]t[H01][m01][s01]", "+0900"),
-            "snapshotId": $states.input.snapshotId
+            "snapshotId": $states.input.snapshotId,
+            "dbPasswordSecretId": $states.input.db_password_secret_id
           }
         ) %}
+    Comment: Prepare variables for the workflow.
   Find old database:
     Type: Task
     Comment: Find old database instances matching the specified DB ID prefix
@@ -38,68 +39,122 @@ States:
       Check if there are too many old database instances matching the specified
       DB ID prefix to prevent conflicts with ongoing workflows.
     Choices:
-      - Next: Unrecoverable error
+      - Next: Workflow already in progress
         Condition: "{% (($count($matchedInstances)) > (1) and
           $not($exists($inputs.newDbId))) %}"
-    Default: Restore DB instance from snapshot
+    Default: Rotate database
     Assign:
       oldDb: "{% $exists($matchedInstances[0]) ? $matchedInstances[0] : null %}"
       oldDbId: "{% $exists($matchedInstances[0]) ?
         $matchedInstances[0].DbInstanceIdentifier : null %}"
-  Restore DB instance from snapshot:
+  Rotate database:
+    Type: Parallel
+    Next: Update domain record to new database
+    Branches:
+      - StartAt: Restore DB instance from snapshot
+        States:
+          Restore DB instance from snapshot:
+            Type: Task
+            Arguments:
+              DbInstanceIdentifier: "{% $inputs.newDbId %}"
+              DbSnapshotIdentifier: "{% $inputs.snapshotId %}"
+              DbSubnetGroupName: '{% $oldDb ? $oldDb.DbSubnetGroup.DbSubnetGroupName :
+                "${tftpl.db_subnet_group_name}" %}'
+              PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible :
+                "${tftpl.publicly_accessible}" %}'
+              VpcSecurityGroupIds: '{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId
+                : ["${join("\", \"", tftpl.vpc_security_group_ids)}"] %}'
+              Tags:
+                - Key: Project
+                  Value: aws-rds-rotation
+            Resource: arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot
+            Catch:
+              - ErrorEquals:
+                  - Rds.DbInstanceAlreadyExistsException
+                Next: Wait for RDS creation
+                Comment: Skip if instance already exists
+            Next: Wait for RDS creation
+          Wait for RDS creation:
+            Type: Task
+            Resource: arn:aws:states:::states:startExecution.sync:2
+            Arguments:
+              StateMachineArn: ${tftpl.wait_for_rds_ready_state_machine_arn}
+              Input:
+                AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
+                dbId: "{% $inputs.newDbId %}"
+                waitSeconds: 30
+            Next: Update RDS password
+          Update RDS password:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Output: "{% $states.result.Payload %}"
+            Arguments:
+              Payload: |-
+                {% {
+                  "dbId": $inputs.newDbId,
+                  "dbPasswordSecretId": $inputs.dbPasswordSecretId
+                } %}
+              FunctionName: ${tftpl.rds_password_updater_function_name}
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                IntervalSeconds: 1
+                MaxAttempts: 3
+                BackoffRate: 2
+                JitterStrategy: FULL
+            Next: Wait for RDS ready
+          Wait for RDS ready:
+            Type: Task
+            Resource: arn:aws:states:::states:startExecution.sync:2
+            Arguments:
+              StateMachineArn: ${tftpl.wait_for_rds_ready_state_machine_arn}
+              Input:
+                AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
+                dbId: "{% $inputs.newDbId %}"
+                waitSeconds: 30
+            Next: Mask & scrub data
+          Mask & scrub data:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Output: "{% $states.result.Payload %}"
+            Arguments:
+              Payload: |-
+                {% {
+                  "dbId": $inputs.newDbId,
+                  "dbPasswordSecretId": $inputs.dbPasswordSecretId
+                } %}
+              FunctionName: ${tftpl.masker_function_name}
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                IntervalSeconds: 1
+                MaxAttempts: 3
+                BackoffRate: 2
+                JitterStrategy: FULL
+            End: true
+    Catch:
+      - ErrorEquals:
+          - States.ALL
+        Next: Delete incomplete database
+    Comment: Uses Parallel type to handle any error thrown while running rotation
+      workflow.
+  Delete incomplete database:
     Type: Task
     Arguments:
       DbInstanceIdentifier: "{% $inputs.newDbId %}"
-      DbSnapshotIdentifier: "{% $inputs.snapshotId %}"
-      DbSubnetGroupName: '{% $oldDb ? $oldDb.DbSubnetGroup.DbSubnetGroupName :
-        "${tftpl.db_subnet_group_name}" %}'
-      PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible :
-        "${tftpl.publicly_accessible}" %}'
-      VpcSecurityGroupIds: '{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId
-        : ["${join("\", \"", tftpl.vpc_security_group_ids)}"] %}'
-      Tags:
-        - Key: Project
-          Value: aws-rds-rotation
-    Resource: arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot
-    Next: Wait for RDS ready
+      SkipFinalSnapshot: true
+    Resource: arn:aws:states:::aws-sdk:rds:deleteDBInstance
+    Next: Rotation failed
     Catch:
       - ErrorEquals:
-          - Rds.DbInstanceAlreadyExistsException
-        Next: Wait for RDS ready
-        Comment: Skip if instance already exists
-  Wait for RDS ready:
-    Type: Task
-    Resource: arn:aws:states:::states:startExecution.sync:2
-    Arguments:
-      StateMachineArn: ${tftpl.wait_for_rds_ready_state_machine_arn}
-      Input:
-        AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
-        dbId: "{% $inputs.newDbId %}"
-        waitSeconds: 30
-    Next: Run SQL queries
-    Catch:
-      - ErrorEquals:
-          - InstanceRestorationFailed
-        Next: Unrecoverable error
-        Comment: Instance restoration failed, manual intervention may be needed.
-  Run SQL queries:
-    Type: Task
-    Resource: arn:aws:states:::lambda:invoke
-    Output: "{% $states.result.Payload %}"
-    Arguments:
-      Payload: "{% $states.input %}"
-      FunctionName: ${tftpl.lambda_function_name}
-    Retry:
-      - ErrorEquals:
-          - Lambda.ServiceException
-          - Lambda.AWSLambdaException
-          - Lambda.SdkClientException
-          - Lambda.TooManyRequestsException
-        IntervalSeconds: 1
-        MaxAttempts: 3
-        BackoffRate: 2
-        JitterStrategy: FULL
-    Next: Update domain record to new database
+          - Rds.DbInstanceNotFound
+        Next: Rotation failed
   Update domain record to new database:
     Type: Task
     Arguments:
@@ -121,10 +176,8 @@ States:
       - Next: Delete old database
         Condition: "{% $oldDbId != null %}"
     Default: No instance to delete
-  Unrecoverable error:
+  Rotation failed:
     Type: Fail
-    Error: "{% $states.error.Error %}"
-    Cause: "{% $states.error.Cause %}"
     Comment: Manual human intervention is needed.
   Delete old database:
     Type: Task
@@ -136,3 +189,6 @@ States:
   No instance to delete:
     Type: Pass
     End: true
+  Workflow already in progress:
+    Type: Fail
+TimeoutSeconds: 3600

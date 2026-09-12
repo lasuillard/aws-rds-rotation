@@ -3,7 +3,7 @@ locals {
   workflow_template_path        = "${local.workflow_template_dir}/statemachine.tftpl.asl.yaml"
   workflow_template_raw_content = file(local.workflow_template_path)
 
-  # Extract all workflow input names ($states.input.*)
+  # Extract all workflow input names ($states.input.*) (convenience feature)
   workflow_input_names = toset(flatten(regexall(
     "\\$states\\.input\\.([a-zA-Z0-9_.-]*[a-zA-Z0-9_-]+)",
     local.workflow_template_raw_content
@@ -52,7 +52,10 @@ data "aws_iam_policy_document" "workflow_role_policy" {
     actions = [
       "lambda:InvokeFunction",
     ]
-    resources = [aws_lambda_function.lambda.arn]
+    resources = [
+      module.rds_password_updater.lambda_function_arn,
+      module.masker.lambda_function_arn
+    ]
   }
 
   statement {
@@ -119,12 +122,16 @@ resource "aws_sfn_state_machine" "workflow" {
         db_subnet_group_name   = aws_db_subnet_group.db.name
         publicly_accessible    = false
         vpc_security_group_ids = [aws_security_group.db.id]
-        lambda_function_name   = aws_lambda_function.lambda.function_name
+        db_tags                = local.db_tags
+        db_password_secret_id  = local.db_password_ref
+
         route53_hosted_zone_id = aws_route53_zone.phz.id
         route53_domain_name    = var.route53_db_record_name
 
         # Components
         wait_for_rds_ready_state_machine_arn = aws_sfn_state_machine.wait_for_rds_ready.arn
+        rds_password_updater_function_name   = module.rds_password_updater.lambda_function_name
+        masker_function_name                 = module.masker.lambda_function_name
       }
     }
   )))
