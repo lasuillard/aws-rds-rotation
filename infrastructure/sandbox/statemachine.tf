@@ -30,6 +30,7 @@ resource "aws_iam_role" "workflow" {
 
 # https://aws.amazon.com/ko/blogs/devops/best-practices-for-writing-step-functions-terraform-projects/
 data "aws_iam_policy_document" "workflow_role_policy" {
+  # Allow logging actions
   statement {
     effect = "Allow"
     actions = [
@@ -47,17 +48,7 @@ data "aws_iam_policy_document" "workflow_role_policy" {
     resources = ["*"]
   }
 
-  statement {
-    effect = "Allow"
-    actions = [
-      "lambda:InvokeFunction",
-    ]
-    resources = [
-      module.rds_password_updater.lambda_function_arn,
-      module.masker.lambda_function_arn
-    ]
-  }
-
+  # Allow RDS instance management actions for specific RDS instances and snapshots
   statement {
     effect = "Allow"
     actions = [
@@ -80,8 +71,43 @@ data "aws_iam_policy_document" "workflow_role_policy" {
     ]
   }
 
+  # Allow invocation of Lambda functions as part of the workflow
   statement {
-    sid       = "UpdateRoute53RecordForDatabase"
+    effect = "Allow"
+    actions = [
+      "lambda:InvokeFunction",
+    ]
+    resources = [
+      module.rds_password_updater.lambda_function_arn,
+    ]
+  }
+
+  # Allow sub state machine (component) execution
+  statement {
+    effect  = "Allow"
+    actions = ["states:StartExecution"]
+    resources = [
+      aws_sfn_state_machine.wait_for_rds_ready.arn
+    ]
+  }
+
+  statement {
+    effect  = "Allow"
+    actions = ["states:DescribeExecution", "states:StopExecution"]
+    resources = [
+      "arn:aws:states:${local.aws_region}:${local.aws_account_id}:execution:${aws_sfn_state_machine.wait_for_rds_ready.name}:*"
+    ]
+  }
+
+  # .sync integration
+  statement {
+    effect    = "Allow"
+    actions   = ["events:PutRule", "events:PutTargets", "events:DescribeRule"]
+    resources = ["arn:aws:events:${local.aws_region}:${local.aws_account_id}:rule/StepFunctions*"]
+  }
+
+  # Allow Route 53 record updates for traffic switching
+  statement {
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
     resources = [aws_route53_zone.phz.arn]
@@ -131,7 +157,7 @@ resource "aws_sfn_state_machine" "workflow" {
         # Components
         wait_for_rds_ready_state_machine_arn = aws_sfn_state_machine.wait_for_rds_ready.arn
         rds_password_updater_function_name   = module.rds_password_updater.lambda_function_name
-        masker_function_name                 = module.masker.lambda_function_name
+        data_sanitization_project_name       = aws_codebuild_project.db_sanitizer.name
       }
     }
   )))

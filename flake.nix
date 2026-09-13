@@ -19,13 +19,6 @@
             allowUnfree = true;
           };
         };
-
-        # BUG: https://github.com/nixos/nixpkgs/issues/522307
-        fixedPipx = pkgs.python314Packages.toPythonApplication (
-          pkgs.python3Packages.pipx.overridePythonAttrs (oldAttrs: {
-            doCheck = false;
-          })
-        );
       in
       {
         packages = {
@@ -41,9 +34,7 @@
             awscli2
             ssm-session-manager-plugin
             postgresql_18
-            python314
             uv
-            fixedPipx
           ];
 
           shellHook = ''

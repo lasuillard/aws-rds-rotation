@@ -49,7 +49,7 @@ States:
         $matchedInstances[0].DbInstanceIdentifier : null %}"
   Rotate database:
     Type: Parallel
-    Next: Update domain record to new database
+    Next: Switch traffic to the new database
     Branches:
       - StartAt: Restore DB instance from snapshot
         States:
@@ -115,28 +115,12 @@ States:
                 AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
                 dbId: "{% $inputs.newDbId %}"
                 waitSeconds: 30
-            Next: Mask & scrub data
-          Mask & scrub data:
+            Next: Sanitize data
+          Sanitize data:
             Type: Task
-            Resource: arn:aws:states:::lambda:invoke
-            Output: "{% $states.result.Payload %}"
+            Resource: arn:aws:states:::codebuild:startBuild.sync
             Arguments:
-              Payload: |-
-                {% {
-                  "dbId": $inputs.newDbId,
-                  "dbPasswordSecretId": $inputs.dbPasswordSecretId
-                } %}
-              FunctionName: ${tftpl.masker_function_name}
-            Retry:
-              - ErrorEquals:
-                  - Lambda.ServiceException
-                  - Lambda.AWSLambdaException
-                  - Lambda.SdkClientException
-                  - Lambda.TooManyRequestsException
-                IntervalSeconds: 1
-                MaxAttempts: 3
-                BackoffRate: 2
-                JitterStrategy: FULL
+              ProjectName: ${tftpl.data_sanitization_project_name}
             End: true
     Catch:
       - ErrorEquals:
@@ -155,7 +139,9 @@ States:
       - ErrorEquals:
           - Rds.DbInstanceNotFound
         Next: Rotation failed
-  Update domain record to new database:
+        Comment: Suppress error RDS instance does not exists
+    Comment: Delete the incomplete RDS database to prevent unwanted sensitive data leaks
+  Switch traffic to the new database:
     Type: Task
     Arguments:
       ChangeBatch:

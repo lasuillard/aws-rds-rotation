@@ -10,6 +10,7 @@ resource "aws_route53_zone" "phz" {
 
 resource "aws_route53_record" "db" {
   lifecycle {
+    # Ignore fields that may be updated outside of Terraform, in SFN.
     ignore_changes = [ttl, records]
   }
 
