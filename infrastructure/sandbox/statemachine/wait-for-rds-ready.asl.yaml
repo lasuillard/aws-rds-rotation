@@ -32,8 +32,8 @@ States:
         Condition: '{% ( $dbStatus in ["creating", "starting", "storage-initialization",
           "configuring-enhanced-monitoring", "modifying", "backing-up", "rebooting",
           "resetting-master-credentials"] ) %}'
-    Default: Restoration failed
-  Restoration failed:
+    Default: Database entered failure status
+  Database entered failure status:
     Type: Fail
     Error: EnteredFailedStatus
     Cause: Database entered failure status
