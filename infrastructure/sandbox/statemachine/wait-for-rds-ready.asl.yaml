@@ -5,12 +5,12 @@ TimeoutSeconds: 1200
 States:
   Wait for DB instance ready:
     Type: Wait
-    Seconds: "{% $states.input.waitSeconds %}"
+    Seconds: "{% $states.context.Execution.Input.waitSeconds %}"
     Next: Check DB instance status
   Check DB instance status:
     Type: Task
     Arguments:
-      DbInstanceIdentifier: "{% $states.input.dbId %}"
+      DbInstanceIdentifier: "{% $states.context.Execution.Input.dbId %}"
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Assign:
       dbStatus: "{% $states.result.DbInstances[0].DbInstanceStatus %}"
