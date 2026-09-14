@@ -145,6 +145,9 @@ resource "aws_codebuild_project" "db_sanitizer" {
     location = "${module.codebuild_artifacts.s3_bucket_id}/${local.sql_s3_key}"
     buildspec = yamlencode({
       version = "0.2"
+      env = {
+        shell = "bash"
+      }
       phases = {
         install = {
           commands = [
@@ -168,10 +171,7 @@ resource "aws_codebuild_project" "db_sanitizer" {
               PGPASSWORD="$DB_PASSWORD" psql --host="$DB_HOST" --username="$DB_USER" --dbname="$DB_NAME" --file="$sql_file"
             done
             COMMAND
-          ]
-        }
-        post_build = {
-          commands = [
+            ,
             "echo 'Data sanitization completed.'"
           ]
         }
