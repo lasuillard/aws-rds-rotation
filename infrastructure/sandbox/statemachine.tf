@@ -10,22 +10,21 @@ locals {
   )))
 }
 
-data "aws_iam_policy_document" "workflow_assume_role_policy" {
+resource "aws_iam_role" "workflow" {
+  name_prefix        = "${var.project_name}-workflow-role-"
+  assume_role_policy = data.aws_iam_policy_document.workflow_role_assume_policy.json
+}
+
+data "aws_iam_policy_document" "workflow_role_assume_policy" {
   statement {
-    effect = "Allow"
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
 
     principals {
       type        = "Service"
       identifiers = ["states.amazonaws.com"]
     }
-
-    actions = ["sts:AssumeRole"]
   }
-}
-
-resource "aws_iam_role" "workflow" {
-  name_prefix        = "${var.project_name}-workflow-role-"
-  assume_role_policy = data.aws_iam_policy_document.workflow_assume_role_policy.json
 }
 
 # https://aws.amazon.com/ko/blogs/devops/best-practices-for-writing-step-functions-terraform-projects/
@@ -120,23 +119,15 @@ data "aws_iam_policy_document" "workflow_role_policy" {
   }
 }
 
-resource "aws_iam_policy" "workflow" {
+resource "aws_iam_role_policy" "workflow" {
   name_prefix = "${var.project_name}-workflow-policy-"
-  policy      = data.aws_iam_policy_document.workflow_role_policy.json
-}
+  role        = aws_iam_role.workflow.id
 
-resource "aws_iam_role_policy_attachments_exclusive" "workflow" {
-  role_name = aws_iam_role.workflow.name
-  policy_arns = [
-    aws_iam_policy.workflow.arn
-  ]
+  # https://aws.amazon.com/ko/blogs/devops/best-practices-for-writing-step-functions-terraform-projects/
+  policy = data.aws_iam_policy_document.workflow_role_policy.json
 }
 
 resource "aws_sfn_state_machine" "workflow" {
-  depends_on = [
-    aws_iam_role_policy_attachments_exclusive.workflow # Ensure policy is attached to the role
-  ]
-
   name_prefix = "${var.project_name}-workflow-"
   role_arn    = aws_iam_role.workflow.arn
   definition = jsonencode(yamldecode(templatefile(
@@ -169,10 +160,60 @@ resource "aws_sfn_state_machine" "workflow" {
   }
 }
 
+resource "aws_iam_role" "wait_for_rds_ready" {
+  name_prefix        = "${var.project_name}-wait-for-rds-ready-"
+  assume_role_policy = data.aws_iam_policy_document.wait_for_rds_ready_assume_policy.json
+}
+
+data "aws_iam_policy_document" "wait_for_rds_ready_assume_policy" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["states.amazonaws.com"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "wait_for_rds_ready_policy" {
+  # Allow logging actions
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogDelivery",
+      "logs:CreateLogStream",
+      "logs:GetLogDelivery",
+      "logs:UpdateLogDelivery",
+      "logs:DeleteLogDelivery",
+      "logs:ListLogDeliveries",
+      "logs:PutLogEvents",
+      "logs:PutResourcePolicy",
+      "logs:DescribeResourcePolicies",
+      "logs:DescribeLogGroups"
+    ]
+    resources = ["*"]
+  }
+
+  # Allow reading RDS instance information and status
+  statement {
+    effect    = "Allow"
+    actions   = ["rds:DescribeDBInstances"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "wait_for_rds_ready" {
+  name_prefix = "${var.project_name}-wait-for-rds-ready-policy-"
+  role        = aws_iam_role.wait_for_rds_ready.name
+  policy      = data.aws_iam_policy_document.wait_for_rds_ready_policy.json
+}
+
 # Sub-workflow as "wait for RDS ready" state machine
 resource "aws_sfn_state_machine" "wait_for_rds_ready" {
   name_prefix = "${var.project_name}-wait-for-rds-ready-"
-  role_arn    = aws_iam_role.workflow.arn
+  role_arn    = aws_iam_role.wait_for_rds_ready.arn
   definition  = jsonencode(yamldecode(file("${local.workflow_template_dir}/wait-for-rds-ready.asl.yaml")))
 }
 
