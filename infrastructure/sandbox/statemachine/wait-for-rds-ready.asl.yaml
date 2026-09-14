@@ -13,23 +13,25 @@ States:
       DbInstanceIdentifier: "{% $states.context.Execution.Input.dbId %}"
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Assign:
-      dbStatus: "{% $states.result.DbInstances[0].DbInstanceStatus %}"
-      dbHost: "{% $states.result.DbInstances[0].Endpoint ?
-        $states.result.DbInstances[0].Endpoint.Address : 'n/a' %}"
-      dbPort: "{% $states.result.DbInstances[0].Endpoint ?
-        $states.result.DbInstances[0].Endpoint.Port : 'n/a' %}"
-      dbName: "{% $states.result.DbInstances[0].DbName ?
-        $states.result.DbInstances[0].DbName : 'n/a' %}"
-      dbUser: "{% $states.result.DbInstances[0].MasterUsername ?
-        $states.result.DbInstances[0].MasterUsername : 'n/a' %}"
+      dbInfo: >-
+        {% (
+          $dbInstance := $states.result.DbInstances[0];
+          {
+            "status": $dbInstance.DbInstanceStatus,
+            "host": $dbInstance.Endpoint ? $dbInstance.Endpoint.Address : 'n/a',
+            "port": $dbInstance.Endpoint ? $dbInstance.Endpoint.Port : 'n/a',
+            "name": $dbInstance.DbName ? $dbInstance.DbName : 'n/a',
+            "user": $dbInstance.MasterUsername ? $dbInstance.MasterUsername : 'n/a'
+          }
+        ) %}
     Next: Is DB instance available?
   Is DB instance available?:
     Type: Choice
     Choices:
-      - Condition: '{% ($dbStatus) = ("available") %}'
+      - Condition: '{% ($dbInfo.status) = ("available") %}'
         Next: Completed
       - Next: Wait for DB instance ready
-        Condition: '{% ( $dbStatus in ["creating", "starting", "storage-initialization",
+        Condition: '{% ( $dbInfo.status in ["creating", "starting", "storage-initialization",
           "configuring-enhanced-monitoring", "modifying", "backing-up", "rebooting",
           "resetting-master-credentials"] ) %}'
     Default: Database entered failure status
@@ -43,10 +45,6 @@ States:
     End: true
     Output: |-
       {% {
-        'dbStatus': $dbStatus,
-        'dbHost': $dbHost,
-        'dbPort': $dbPort,
-        'dbName': $dbName,
-        'dbUser': $dbUser
+        "dbInfo": $dbInfo
       } %}
     Comment: The RDS DB instance is available and ready for use.
