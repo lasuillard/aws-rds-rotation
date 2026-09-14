@@ -130,10 +130,23 @@ States:
                 - {Name: "DB_HOST", Type: "PLAINTEXT", Value: "{% $dbHost %}"}
                 - {Name: "DB_USER", Type: "PLAINTEXT", Value: "{% $dbUser %}"}
             End: true
+            Output: >-
+              {% {
+                "dbHost": $dbHost,
+                "dbPort": $dbPort,
+                "dbName": $dbName,
+                "dbUser": $dbUser
+              } %}
     Catch:
       - ErrorEquals:
           - States.ALL
         Next: Delete incomplete database
+    Assign:
+      # Re-assign database connection details after the parallel execution
+      dbHost: "{% $states.result[0].dbHost %}"
+      dbPort: "{% $states.result[0].dbPort %}"
+      dbName: "{% $states.result[0].dbName %}"
+      dbUser: "{% $states.result[0].dbUser %}"
     Comment: Uses Parallel type to handle any error thrown while running rotation
       workflow.
   Delete incomplete database:
