@@ -13,3 +13,14 @@ output "workflow_input" {
     for key in local.workflow_input_names : key => ""
   })
 }
+
+output "psql_command" {
+  description = "`psql` command to connect to the database."
+  value       = <<-CMD
+    PGDATABASE='${local.db_name}' \
+    PGUSER='${local.db_username}' \
+    PGPASSWORD="$(aws secretsmanager get-secret-value --secret-id '${local.db_password_ref}' --query SecretString --output text)" \
+    ${abspath("${path.module}/../../scripts/psql.sh")} \
+      5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
+  CMD
+}
