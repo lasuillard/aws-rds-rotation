@@ -19,7 +19,7 @@ remote_port="$4"
 project_root="$(git rev-parse --show-toplevel)"
 log_file="$(realpath ${project_root}/setup.log)"
 
-aws_annoying_cli=(pipx run 'aws-annoying[cli]~=0.11.0')
+aws_annoying_cli=(uv tool run 'aws-annoying[cli]~=0.11.0')
 pid_file='./session-manager.pid'
 
 function cleanup() {
