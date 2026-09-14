@@ -5,7 +5,7 @@ locals {
 
   db_name     = var.db_name
   db_username = var.db_username
-  db_password = coalesce(var.db_password, random_password.db[0].result)
+  db_password = var.db_password == null ? random_password.db[0].result : var.db_password
 
   db_snapshot_identifier = coalesce(var.db_snapshot_identifier, "${var.project_name}-base-snapshot")
 }

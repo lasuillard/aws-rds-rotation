@@ -86,10 +86,17 @@ data "aws_iam_policy_document" "db_sanitizer_role_policy" {
   statement {
     effect = "Allow"
     actions = [
+      "s3:GetBucketLocation"
+    ]
+    resources = [module.codebuild_artifacts.s3_bucket_arn]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
       "s3:GetObject",
       "s3:GetObjectVersion",
       "s3:PutObject",
-      "s3:GetBucketLocation"
     ]
     resources = ["${module.codebuild_artifacts.s3_bucket_arn}/*"]
   }
