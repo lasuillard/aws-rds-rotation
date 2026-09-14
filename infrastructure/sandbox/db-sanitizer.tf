@@ -47,16 +47,37 @@ resource "aws_iam_role" "codebuild_role" {
 
 data "aws_iam_policy_document" "db_sanitizer_role_policy" {
   # Allow EC2 network interface management for CodeBuild within a VPC
+  # https://docs.aws.amazon.com/codebuild/latest/userguide/auth-and-access-control-iam-identity-based-access-control.html#customer-managed-policies-example-create-vpc-network-interface
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:CreateNetworkInterfacePermission",
+    ]
+    resources = ["arn:aws:ec2:${local.aws_region}:${local.aws_account_id}:network-interface/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:AuthorizedService"
+      values   = ["codebuild.amazonaws.com"]
+    }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "ec2:Subnet"
+      values   = [aws_subnet.private_1.arn, aws_subnet.private_2.arn]
+    }
+  }
+
   statement {
     effect = "Allow"
     actions = [
       "ec2:CreateNetworkInterface",
       "ec2:DescribeNetworkInterfaces",
       "ec2:DeleteNetworkInterface",
+      "ec2:DescribeVpcs",
       "ec2:DescribeSubnets",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeDhcpOptions",
-      "ec2:DescribeVpcs"
     ]
     resources = ["*"]
   }
@@ -165,7 +186,7 @@ resource "aws_codebuild_project" "db_sanitizer" {
   environment {
     compute_type                = "BUILD_GENERAL1_SMALL"
     type                        = "LINUX_CONTAINER"
-    image                       = "aws/codebuild/amazonlinux-x86_64-standard:6.0"
+    image                       = "aws/codebuild/standard:8.0"
     image_pull_credentials_type = "CODEBUILD"
 
     environment_variable {
