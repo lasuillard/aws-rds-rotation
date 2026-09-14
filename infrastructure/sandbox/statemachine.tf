@@ -105,6 +105,17 @@ data "aws_iam_policy_document" "workflow_role_policy" {
     resources = ["arn:aws:events:${local.aws_region}:${local.aws_account_id}:rule/StepFunctions*"]
   }
 
+  statement {
+    effect = "Allow"
+    actions = [
+      "codebuild:StartBuild",
+      "codebuild:StopBuild",
+      "codebuild:BatchGetBuilds",
+      "codebuild:BatchGetReports",
+    ]
+    resources = [aws_codebuild_project.db_sanitizer.arn]
+  }
+
   # Allow Route 53 record updates for traffic switching
   statement {
     effect    = "Allow"

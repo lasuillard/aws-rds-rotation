@@ -78,10 +78,10 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_bastion" {
   referenced_security_group_id = aws_security_group.bastion.id
 }
 
-resource "aws_vpc_security_group_egress_rule" "db_from_db_sanitizer" {
+resource "aws_vpc_security_group_ingress_rule" "db_from_db_sanitizer" {
   security_group_id = aws_security_group.db.id
 
-  description = "Allow outbound traffic to the db sanitizer security group"
+  description = "Allow inbound traffic from the db sanitizer security group"
 
   from_port                    = 5432
   to_port                      = 5432

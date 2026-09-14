@@ -1,8 +1,12 @@
 QueryLanguage: JSONata
 Comment: Wait for the RDS DB instance to become available before running SQL queries.
-StartAt: Check DB instance status
+StartAt: Wait for DB instance ready
 TimeoutSeconds: 1200
 States:
+  Wait for DB instance ready:
+    Type: Wait
+    Seconds: "{% $states.input.waitSeconds %}"
+    Next: Check DB instance status
   Check DB instance status:
     Type: Task
     Arguments:
@@ -10,13 +14,15 @@ States:
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
     Assign:
       dbStatus: "{% $states.result.DbInstances[0].DbInstanceStatus %}"
-      dbDomain: "{% $states.result.DbInstances[0].Endpoint ?
+      dbHost: "{% $states.result.DbInstances[0].Endpoint ?
         $states.result.DbInstances[0].Endpoint.Address : 'n/a' %}"
+      dbPort: "{% $states.result.DbInstances[0].Endpoint ?
+        $states.result.DbInstances[0].Endpoint.Port : 'n/a' %}"
+      dbName: "{% $states.result.DbInstances[0].DbName ?
+        $states.result.DbInstances[0].DbName : 'n/a' %}"
+      dbUser: "{% $states.result.DbInstances[0].MasterUsername ?
+        $states.result.DbInstances[0].MasterUsername : 'n/a' %}"
     Next: Is DB instance available?
-  Wait for DB instance ready:
-    Type: Wait
-    Seconds: "{% $states.input.waitSeconds %}"
-    Next: Check DB instance status
   Is DB instance available?:
     Type: Choice
     Choices:
@@ -24,15 +30,23 @@ States:
         Next: Completed
       - Next: Wait for DB instance ready
         Condition: '{% ( $dbStatus in ["creating", "starting", "storage-initialization",
-          "configuring-enhanced-monitoring", "modifying"] ) %}'
+          "configuring-enhanced-monitoring", "modifying", "backing-up", "rebooting",
+          "resetting-master-credentials"] ) %}'
     Default: Restoration failed
   Restoration failed:
     Type: Fail
-    Error: InstanceRestorationFailed
-    Cause: Failed to restore database instance from snapshot.
-    Comment: Instance restoration entered unexpected status. Please diagnose the RDS events.
+    Error: EnteredFailedStatus
+    Cause: Database entered failure status
+    Comment: RDS instance entered unexpected status. Please diagnose the RDS events.
   Completed:
     Type: Pass
     End: true
-    Output: "{% { 'dbDomain': $dbDomain, 'dbStatus': $dbStatus } %}"
+    Output: |-
+      {% {
+        'dbStatus': $dbStatus,
+        'dbHost': $dbHost,
+        'dbPort': $dbPort,
+        'dbName': $dbName,
+        'dbUser': $dbUser
+      } %}
     Comment: The RDS DB instance is available and ready for use.

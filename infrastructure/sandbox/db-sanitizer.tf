@@ -12,20 +12,6 @@ module "codebuild_artifacts" {
   force_destroy = true
 }
 
-resource "aws_iam_role" "codebuild_role" {
-  name = "${var.project_name}-db-sanitizer-role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action    = "sts:AssumeRole",
-        Effect    = "Allow",
-        Principal = { Service = "codebuild.amazonaws.com" }
-      }
-    ]
-  })
-}
-
 # SQL files to be executed by the CodeBuild project to sanitize the database
 # NOTE: It should run in order of the SQL files within the zip archive, by their filenames:
 #       e.g. 001-first.sql -> 002-second.sql -> 100-last.sql
@@ -40,6 +26,23 @@ resource "aws_s3_object" "sql_zip" {
   key    = local.sql_s3_key
   source = data.archive_file.sql_zip.output_path
   etag   = filemd5(data.archive_file.sql_zip.output_path)
+}
+
+data "aws_iam_policy_document" "codebuild_assume_role_policy" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "codebuild_role" {
+  name               = "${var.project_name}-db-sanitizer-role"
+  assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role_policy.json
 }
 
 data "aws_iam_policy_document" "db_sanitizer_role_policy" {
@@ -105,7 +108,7 @@ resource "aws_cloudwatch_log_group" "db_sanitizer_logs" {
 
 resource "aws_codebuild_project" "db_sanitizer" {
   name         = "${var.project_name}-db-sanitizer"
-  description  = "Build project for ${var.project_name}"
+  description  = "Database sanitization pipeline for ${var.project_name}"
   service_role = aws_iam_role.codebuild_role.arn
 
   vpc_config {
@@ -123,16 +126,32 @@ resource "aws_codebuild_project" "db_sanitizer" {
       version = "0.2"
       phases = {
         install = {
-          runtime-versions = {
-            python = "3.14"
-          }
           commands = [
-            "python --version"
+            "echo 'Installing PostgreSQL client...'",
+            "apt-get update && apt-get install --yes postgresql-client"
+          ]
+        }
+        pre_build = {
+          commands = [
+            "echo 'Checking database connection...'",
+            "PGPASSWORD=\"$DB_PASSWORD\" psql --host=\"$DB_HOST\" --username=\"$DB_USER\" --dbname=\"$DB_NAME\" --command='SELECT 1;'"
           ]
         }
         build = {
           commands = [
-            "ls --all -l",
+            "echo 'Running SQL files...'",
+            <<-COMMAND
+            sql_files=($(ls *.sql))
+            for sql_file in "$${sql_files[@]}"; do
+              echo "Running $sql_file..."
+              PGPASSWORD="$DB_PASSWORD" psql --host="$DB_HOST" --username="$DB_USER" --dbname="$DB_NAME" --file="$sql_file"
+            done
+            COMMAND
+          ]
+        }
+        post_build = {
+          commands = [
+            "echo 'Data sanitization completed.'"
           ]
         }
       }
@@ -150,7 +169,7 @@ resource "aws_codebuild_project" "db_sanitizer" {
     image_pull_credentials_type = "CODEBUILD"
 
     environment_variable {
-      name  = "DB_CREDENTIALS"
+      name  = "DB_PASSWORD"
       value = local.db_password_ref
       type  = "SECRETS_MANAGER"
     }
@@ -188,5 +207,5 @@ resource "aws_vpc_security_group_egress_rule" "db_sanitizer_to_rds" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  referenced_security_group_id = aws_security_group.db_sanitizer.id
+  referenced_security_group_id = aws_security_group.db.id
 }
