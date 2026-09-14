@@ -19,7 +19,7 @@ remote_port="$4"
 project_root="$(git rev-parse --show-toplevel)"
 log_file="$(realpath ${project_root}/psql.log)"
 
-aws_annoying_cli='pipx run aws-annoying~=0.10.0'
+aws_annoying_cli=(uv tool run 'aws-annoying[cli]~=0.11.0')
 pid_file='./psql.pid'
 
 function cleanup() {
@@ -44,6 +44,7 @@ trap cleanup EXIT
   | tee --append "$log_file"
 
 # Wait for connection establishment
+echo "Waiting for local port $local_port to be ready..." | tee --append "$log_file"
 timeout=10
 while ! (echo > "/dev/tcp/127.0.0.1/${local_port}"); do
   sleep 1
@@ -54,8 +55,8 @@ while ! (echo > "/dev/tcp/127.0.0.1/${local_port}"); do
   fi
 done
 
-# Run psql, replacing current shell with the psql process
-export PGHOST="localhost"
+# Run psql
+export PGHOST='localhost'
 export PGPORT="$local_port"
 
-exec psql "${@:5}"
+psql "${@:5}"

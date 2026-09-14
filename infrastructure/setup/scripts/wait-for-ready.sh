@@ -19,7 +19,7 @@ ec2_instance_id="$1"
 project_root="$(git rev-parse --show-toplevel)"
 log_file="$(realpath ${project_root}/setup.log)"
 
-aws_annoying_cli=(pipx run 'aws-annoying[cli]~=0.11.0')
+aws_annoying_cli=(uv tool run 'aws-annoying[cli]~=0.11.0')
 
 echo "Waiting for EC2 instance $ec2_instance_id to be ready..." | tee --append "$log_file"
 "${aws_annoying_cli[@]}" ec2 wait-for-ready \

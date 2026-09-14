@@ -1,14 +1,14 @@
----
 QueryLanguage: JSONata
-Comment: aws-rds-rotation
-StartAt: Prepare
+Comment: RDS rotation main workflow.
+TimeoutSeconds: 7200
+StartAt: Initialize
 States:
-  Prepare:
+  Initialize:
     Type: Wait
     Seconds: 5
     Next: Find old database
     Assign:
-      inputs: |-
+      inputs: >-
         {% (
           $dbIdPrefix := "${tftpl.db_id_prefix}";
           {
@@ -19,14 +19,27 @@ States:
             "snapshotId": $states.input.snapshotId
           }
         ) %}
+      tftpl: >-
+        {% {
+          "db_subnet_group_name": "${tftpl.db_subnet_group_name}",
+          "publicly_accessible": "${tftpl.publicly_accessible}",
+          "vpc_security_group_ids": ["${join("\", \"", tftpl.vpc_security_group_ids)}"],
+          "wait_for_rds_ready_state_machine_arn": "${tftpl.wait_for_rds_ready_state_machine_arn}",
+          "db_password_secret_id": "${tftpl.db_password_secret_id}",
+          "rds_password_updater_function_name": "${tftpl.rds_password_updater_function_name}",
+          "data_sanitization_project_name": "${tftpl.data_sanitization_project_name}",
+          "route53_hosted_zone_id": "${tftpl.route53_hosted_zone_id}",
+          "route53_domain_name": "${tftpl.route53_domain_name}"
+        } %}
+    Comment: Prepare variables for the workflow, including Terraform template inputs.
   Find old database:
     Type: Task
-    Comment: Find old database instances matching the specified DB ID prefix
-    Arguments: {}
     Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
+    Comment: Find old database instances matching the specified DB ID prefix
     Next: Check instance count
+    Arguments: {}
     Assign:
-      matchedInstances: |-
+      matchedInstances: >-
         {% (
           $exists($states.result.DbInstances[0])
             ? $states.result.DbInstances[$substring(DbInstanceIdentifier, 0, $length($inputs.dbIdPrefix)) = $inputs.dbIdPrefix]
@@ -34,123 +47,156 @@ States:
         ) %}
   Check instance count:
     Type: Choice
-    Comment: |
-      Check if there are too many old database instances matching the specified DB ID prefix
-      to prevent conflicts with ongoing workflows
+    Comment: >
+      Check if there are too many old database instances matching the specified
+      DB ID prefix to prevent conflicts with ongoing workflows.
+    Default: Rotate database
     Choices:
-    - Next: Too many instances (>1)
-      Condition: "{% (($count($matchedInstances)) > (1) and $not($exists($inputs.newDbId))) %}"
-    Default: Restore DB instance from snapshot
+      - Next: Workflow already in progress
+        Condition: "{% (($count($matchedInstances)) > (1) and
+          $not($exists($inputs.newDbId))) %}"
     Assign:
       oldDb: "{% $exists($matchedInstances[0]) ? $matchedInstances[0] : null %}"
-      oldDbId: "{% $exists($matchedInstances[0]) ? $matchedInstances[0].DbInstanceIdentifier : null %}"
-  Too many instances (>1):
-    Type: Fail
-    Error: TooManyInstances
-    Cause: |-
-      {% (
-        "There are more than 1 instances (" & $count($matchedInstances) & ")
-        found. Which might indicate that another workflow in in progress. Retry later."
-      ) %}
-    Comment: |
-      If there are more than 1 instances, it could be a sign of that another
-      workflow is in progress. If you meant to continue the ongoing workflow from
-      failure, set input newDbId to the identifier of created instance.
-  Restore DB instance from snapshot:
-    Type: Task
-    Arguments:
-      DbInstanceIdentifier: "{% $inputs.newDbId %}"
-      DbSnapshotIdentifier: "{% $inputs.snapshotId %}"
-      DbSubnetGroupName: '{% $oldDb ? $oldDb.DbSubnetGroup.DbSubnetGroupName : "${tftpl.db_subnet_group_name}" %}'
-      PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible : "${tftpl.publicly_accessible}" %}'
-      VpcSecurityGroupIds: |-
-        {% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId : ["${join("\", \"", tftpl.vpc_security_group_ids)}"] %}
-      Tags:
-      - Key: Project
-        Value: aws-rds-rotation
-    Resource: arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot
-    Next: Wait for DB instance ready
+      oldDbId: "{% $exists($matchedInstances[0]) ?
+        $matchedInstances[0].DbInstanceIdentifier : null %}"
+  Rotate database:
+    Type: Parallel
+    Comment: Uses Parallel type to handle any error thrown while running rotation
+      workflow.
+    Next: Switch traffic to the new database
+    Branches:
+      - StartAt: Restore DB instance from snapshot
+        States:
+          Restore DB instance from snapshot:
+            Type: Task
+            Resource: arn:aws:states:::aws-sdk:rds:restoreDBInstanceFromDBSnapshot
+            Arguments:
+              DbInstanceIdentifier: "{% $inputs.newDbId %}"
+              DbSnapshotIdentifier: "{% $inputs.snapshotId %}"
+              DbSubnetGroupName: '{% $oldDb ? $oldDb.DbSubnetGroup.DbSubnetGroupName :
+                $tftpl.db_subnet_group_name %}'
+              PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible :
+                $tftpl.publicly_accessible %}'
+              VpcSecurityGroupIds: '{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId
+                : $tftpl.vpc_security_group_ids %}'
+              EnableIamDatabaseAuthentication: false
+              Tags:
+                - Key: Project
+                  Value: aws-rds-rotation
+            Next: Wait for RDS creation
+            Catch:
+              - Comment: Skip if instance already exists
+                ErrorEquals:
+                  - Rds.DbInstanceAlreadyExists
+                Next: Wait for RDS creation
+          Wait for RDS creation:
+            Type: Task
+            Resource: arn:aws:states:::states:startExecution.sync:2
+            Next: Update RDS password
+            Arguments:
+              StateMachineArn: "{% $tftpl.wait_for_rds_ready_state_machine_arn %}"
+              Input:
+                AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
+                dbId: "{% $inputs.newDbId %}"
+                waitSeconds: 30
+          Update RDS password:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Next: Wait for RDS ready
+            Arguments:
+              Payload: |-
+                {% {
+                  "dbId": $inputs.newDbId,
+                  "dbPasswordSecretId": $tftpl.db_password_secret_id
+                } %}
+              FunctionName: "{% $tftpl.rds_password_updater_function_name %}"
+            Output: "{% $states.result.Payload %}"
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                IntervalSeconds: 1
+                MaxAttempts: 3
+                BackoffRate: 2
+                JitterStrategy: FULL
+          Wait for RDS ready:
+            Type: Task
+            Resource: arn:aws:states:::states:startExecution.sync:2
+            Next: Sanitize data
+            Arguments:
+              StateMachineArn: "{% $tftpl.wait_for_rds_ready_state_machine_arn %}"
+              Input:
+                AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
+                dbId: "{% $inputs.newDbId %}"
+                waitSeconds: 30
+            Assign:
+              dbInfo: "{% $states.result.Output.dbInfo %}"
+          Sanitize data:
+            Type: Task
+            Resource: arn:aws:states:::codebuild:startBuild.sync
+            End: true
+            Arguments:
+              ProjectName: "{% $tftpl.data_sanitization_project_name %}"
+              EnvironmentVariablesOverride:
+                - {Name: "DB_NAME", Type: "PLAINTEXT", Value: "{% $dbInfo.name %}"}
+                - {Name: "DB_HOST", Type: "PLAINTEXT", Value: "{% $dbInfo.host %}"}
+                - {Name: "DB_USER", Type: "PLAINTEXT", Value: "{% $dbInfo.user %}"}
+            Output: "{% { 'dbInfo': $dbInfo } %}"
     Catch:
-    - ErrorEquals:
-      - Rds.DbInstanceAlreadyExistsException
-      Next: Check DB instance status
-      Comment: Skip if instance already exists
-  Wait for DB instance ready:
-    Type: Wait
-    Seconds: 30
-    Next: Check DB instance status
-  Check DB instance status:
+      - ErrorEquals:
+          - States.ALL
+        Next: Delete incomplete database
+    Assign:
+      # Re-assign database connection details after the parallel execution
+      dbInfo: "{% $states.result[0].dbInfo %}"
+  Delete incomplete database:
     Type: Task
+    Resource: arn:aws:states:::aws-sdk:rds:deleteDBInstance
+    Comment: Delete the incomplete RDS database to prevent unwanted sensitive data leaks
+    Next: Rotation failed
     Arguments:
       DbInstanceIdentifier: "{% $inputs.newDbId %}"
-    Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
-    Assign:
-      dbStatus: "{% $states.result.DbInstances[0].DbInstanceStatus %}"
-      dbDomain: "{% $states.result.DbInstances[0].Endpoint ? $states.result.DbInstances[0].Endpoint.Address : 'n/a' %}"
-    Next: Is DB instance available?
-  Is DB instance available?:
-    Type: Choice
-    Choices:
-    - Condition: '{% ($dbStatus) = ("available") %}'
-      Next: Run SQL queries
-    - Next: Wait for DB instance ready
-      Condition:
-        '{% (
-          $dbStatus in ["creating", "starting", "storage-initialization", "configuring-enhanced-monitoring", "modifying"]
-        ) %}'
-    Default: Instance restoration failed
-  Instance restoration failed:
-    Type: Fail
-    Error: InstanceRestorationFailed
-    Cause: Failed to restore database instance from snapshot.
-    Comment: Instance restoration entered unexpected status. Please diagnose the RDS
-      events.
-  Run SQL queries:
+      SkipFinalSnapshot: true
+    Catch:
+      - ErrorEquals:
+          - Rds.DbInstanceNotFound
+        Next: Rotation failed
+        Comment: Suppress error RDS instance does not exists
+  Switch traffic to the new database:
     Type: Task
-    Resource: arn:aws:states:::lambda:invoke
-    Output: "{% $states.result.Payload %}"
-    Arguments:
-      Payload: "{% $states.input %}"
-      FunctionName: "${tftpl.lambda_function_name}"
-    Retry:
-    - ErrorEquals:
-      - Lambda.ServiceException
-      - Lambda.AWSLambdaException
-      - Lambda.SdkClientException
-      - Lambda.TooManyRequestsException
-      IntervalSeconds: 1
-      MaxAttempts: 3
-      BackoffRate: 2
-      JitterStrategy: FULL
-    Next: Update domain record to new database
-  Update domain record to new database:
-    Type: Task
-    Arguments:
-      ChangeBatch:
-        Changes:
-        - Action: UPSERT
-          ResourceRecordSet:
-            Name: "${tftpl.route53_domain_name}"
-            Type: CNAME
-            Ttl: 60
-            ResourceRecords:
-            - Value: "{% $dbDomain %}"
-      HostedZoneId: "${tftpl.route53_hosted_zone_id}"
     Resource: arn:aws:states:::aws-sdk:route53:changeResourceRecordSets
     Next: Old instance exists?
+    Arguments:
+      HostedZoneId: "{% $tftpl.route53_hosted_zone_id %}"
+      ChangeBatch:
+        Changes:
+          - Action: UPSERT
+            ResourceRecordSet:
+              Name: "{% $tftpl.route53_domain_name %}"
+              Type: CNAME
+              Ttl: 60
+              ResourceRecords:
+                - Value: "{% $dbInfo.host %}"
   Old instance exists?:
     Type: Choice
-    Choices:
-    - Next: Delete old database
-      Condition: "{% $oldDbId != null %}"
     Default: No instance to delete
+    Choices:
+      - Next: Delete old database
+        Condition: "{% $oldDbId != null %}"
+  Rotation failed:
+    Type: Fail
+    Comment: Rotation workflow failed. Manual human intervention is needed.
   Delete old database:
     Type: Task
+    Resource: arn:aws:states:::aws-sdk:rds:deleteDBInstance
+    End: true
     Arguments:
       DbInstanceIdentifier: "{% $oldDbId %}"
       SkipFinalSnapshot: true
-    Resource: arn:aws:states:::aws-sdk:rds:deleteDBInstance
-    End: true
   No instance to delete:
     Type: Pass
     End: true
+  Workflow already in progress:
+    Type: Fail

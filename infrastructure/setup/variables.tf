@@ -34,6 +34,25 @@ variable "vpc_private_subnet_2_cidr_block" {
   default     = "10.0.2.0/24"
 }
 
+variable "db_name" {
+  type        = string
+  description = "Name of the database"
+  default     = "demo"
+}
+
+variable "db_username" {
+  type        = string
+  description = "Master username for the database"
+  default     = "admin"
+}
+
+variable "db_password" {
+  type        = string
+  sensitive   = true
+  description = "Master user password for the database"
+  default     = null
+}
+
 variable "create_db_snapshot" {
   type        = bool
   description = "Whether to create the final DB snapshot on deletion. When enabled, a snapshot that is outside of state management will be created."

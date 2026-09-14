@@ -1,0 +1,50 @@
+QueryLanguage: JSONata
+Comment: Wait for the RDS DB instance to become available before running SQL queries.
+StartAt: Wait for DB instance ready
+TimeoutSeconds: 1200
+States:
+  Wait for DB instance ready:
+    Type: Wait
+    Seconds: "{% $states.context.Execution.Input.waitSeconds %}"
+    Next: Check DB instance status
+  Check DB instance status:
+    Type: Task
+    Arguments:
+      DbInstanceIdentifier: "{% $states.context.Execution.Input.dbId %}"
+    Resource: arn:aws:states:::aws-sdk:rds:describeDBInstances
+    Assign:
+      dbInfo: >-
+        {% (
+          $dbInstance := $states.result.DbInstances[0];
+          {
+            "status": $dbInstance.DbInstanceStatus,
+            "host": $dbInstance.Endpoint ? $dbInstance.Endpoint.Address : 'n/a',
+            "port": $dbInstance.Endpoint ? $dbInstance.Endpoint.Port : 'n/a',
+            "name": $dbInstance.DbName ? $dbInstance.DbName : 'n/a',
+            "user": $dbInstance.MasterUsername ? $dbInstance.MasterUsername : 'n/a'
+          }
+        ) %}
+    Next: Is DB instance available?
+  Is DB instance available?:
+    Type: Choice
+    Choices:
+      - Condition: '{% ($dbInfo.status) = ("available") %}'
+        Next: Completed
+      - Next: Wait for DB instance ready
+        Condition: '{% ( $dbInfo.status in ["creating", "starting", "storage-initialization",
+          "configuring-enhanced-monitoring", "modifying", "backing-up", "rebooting",
+          "resetting-master-credentials"] ) %}'
+    Default: Database entered failure status
+  Database entered failure status:
+    Type: Fail
+    Error: EnteredFailedStatus
+    Cause: Database entered failure status
+    Comment: RDS instance entered unexpected status. Please diagnose the RDS events.
+  Completed:
+    Type: Pass
+    End: true
+    Output: |-
+      {% {
+        "dbInfo": $dbInfo
+      } %}
+    Comment: The RDS DB instance is available and ready for use.

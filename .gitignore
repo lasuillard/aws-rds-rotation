@@ -1,5 +1,7 @@
 .devcontainer
 .vscode
+infrastructure/sandbox/builds
+*.egg-info
 
 # Created by https://www.toptal.com/developers/gitignore/api/git,linux,macos,direnv,dotenv,windows,visualstudiocode,terraform
 # Edit at https://www.toptal.com/developers/gitignore?templates=git,linux,macos,direnv,dotenv,windows,visualstudiocode,terraform

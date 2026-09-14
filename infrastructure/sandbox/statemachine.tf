@@ -1,35 +1,35 @@
 locals {
-  workflow_template_path = "${path.module}/statemachine/statemachine.tftpl.asl.yaml"
-
+  workflow_template_dir         = "${path.module}/statemachine"
+  workflow_template_path        = "${local.workflow_template_dir}/statemachine.tftpl.asl.yaml"
   workflow_template_raw_content = file(local.workflow_template_path)
 
-  # Extract all workflow input names ($states.input.*)
+  # Extract all workflow input names ($states.input.*) (convenience feature)
   workflow_input_names = toset(flatten(regexall(
     "\\$states\\.input\\.([a-zA-Z0-9_.-]*[a-zA-Z0-9_-]+)",
     local.workflow_template_raw_content
   )))
 }
 
-data "aws_iam_policy_document" "workflow_assume_role_policy" {
+resource "aws_iam_role" "workflow" {
+  name_prefix        = "${var.project_name}-workflow-role-"
+  assume_role_policy = data.aws_iam_policy_document.workflow_role_assume_policy.json
+}
+
+data "aws_iam_policy_document" "workflow_role_assume_policy" {
   statement {
-    effect = "Allow"
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
 
     principals {
       type        = "Service"
       identifiers = ["states.amazonaws.com"]
     }
-
-    actions = ["sts:AssumeRole"]
   }
-}
-
-resource "aws_iam_role" "workflow" {
-  name_prefix        = "${var.project_name}-workflow-role-"
-  assume_role_policy = data.aws_iam_policy_document.workflow_assume_role_policy.json
 }
 
 # https://aws.amazon.com/ko/blogs/devops/best-practices-for-writing-step-functions-terraform-projects/
 data "aws_iam_policy_document" "workflow_role_policy" {
+  # Allow logging actions
   statement {
     effect = "Allow"
     actions = [
@@ -47,14 +47,7 @@ data "aws_iam_policy_document" "workflow_role_policy" {
     resources = ["*"]
   }
 
-  statement {
-    effect = "Allow"
-    actions = [
-      "lambda:InvokeFunction",
-    ]
-    resources = [aws_lambda_function.lambda.arn]
-  }
-
+  # Allow RDS instance management actions for specific RDS instances and snapshots
   statement {
     effect = "Allow"
     actions = [
@@ -77,14 +70,54 @@ data "aws_iam_policy_document" "workflow_role_policy" {
     ]
   }
 
+  # Allow invocation of Lambda functions as part of the workflow
   statement {
-    effect    = "Allow"
-    actions   = ["route53:ChangeResourceRecordSets"]
-    resources = [aws_route53_zone.phz.arn]
+    effect = "Allow"
+    actions = [
+      "lambda:InvokeFunction",
+    ]
+    resources = [
+      module.rds_password_updater.lambda_function_arn,
+    ]
+  }
+
+  # Allow sub state machine (component) execution
+  statement {
+    effect  = "Allow"
+    actions = ["states:StartExecution"]
+    resources = [
+      aws_sfn_state_machine.wait_for_rds_ready.arn
+    ]
   }
 
   statement {
-    sid       = "UpdateRoute53RecordForDatabase"
+    effect  = "Allow"
+    actions = ["states:DescribeExecution", "states:StopExecution"]
+    resources = [
+      "arn:aws:states:${local.aws_region}:${local.aws_account_id}:execution:${aws_sfn_state_machine.wait_for_rds_ready.name}:*"
+    ]
+  }
+
+  # .sync integration
+  statement {
+    effect    = "Allow"
+    actions   = ["events:PutRule", "events:PutTargets", "events:DescribeRule"]
+    resources = ["arn:aws:events:${local.aws_region}:${local.aws_account_id}:rule/StepFunctions*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "codebuild:StartBuild",
+      "codebuild:StopBuild",
+      "codebuild:BatchGetBuilds",
+      "codebuild:BatchGetReports",
+    ]
+    resources = [aws_codebuild_project.db_sanitizer.arn]
+  }
+
+  # Allow Route 53 record updates for traffic switching
+  statement {
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
     resources = [aws_route53_zone.phz.arn]
@@ -97,23 +130,15 @@ data "aws_iam_policy_document" "workflow_role_policy" {
   }
 }
 
-resource "aws_iam_policy" "workflow" {
+resource "aws_iam_role_policy" "workflow" {
   name_prefix = "${var.project_name}-workflow-policy-"
-  policy      = data.aws_iam_policy_document.workflow_role_policy.json
-}
+  role        = aws_iam_role.workflow.id
 
-resource "aws_iam_role_policy_attachments_exclusive" "workflow" {
-  role_name = aws_iam_role.workflow.name
-  policy_arns = [
-    aws_iam_policy.workflow.arn
-  ]
+  # https://aws.amazon.com/ko/blogs/devops/best-practices-for-writing-step-functions-terraform-projects/
+  policy = data.aws_iam_policy_document.workflow_role_policy.json
 }
 
 resource "aws_sfn_state_machine" "workflow" {
-  depends_on = [
-    aws_iam_role_policy_attachments_exclusive.workflow # Ensure policy is attached to the role
-  ]
-
   name_prefix = "${var.project_name}-workflow-"
   role_arn    = aws_iam_role.workflow.arn
   definition = jsonencode(yamldecode(templatefile(
@@ -125,13 +150,19 @@ resource "aws_sfn_state_machine" "workflow" {
         db_subnet_group_name   = aws_db_subnet_group.db.name
         publicly_accessible    = false
         vpc_security_group_ids = [aws_security_group.db.id]
-        lambda_function_name   = aws_lambda_function.lambda.function_name
+        db_tags                = local.db_tags
+        db_password_secret_id  = local.db_password_ref
+
         route53_hosted_zone_id = aws_route53_zone.phz.id
         route53_domain_name    = var.route53_db_record_name
+
+        # Components
+        wait_for_rds_ready_state_machine_arn = aws_sfn_state_machine.wait_for_rds_ready.arn
+        rds_password_updater_function_name   = module.rds_password_updater.lambda_function_name
+        data_sanitization_project_name       = aws_codebuild_project.db_sanitizer.name
       }
     }
   )))
-  publish = true
 
   logging_configuration {
     log_destination        = "${aws_cloudwatch_log_group.workflow.arn}:*"
@@ -140,13 +171,61 @@ resource "aws_sfn_state_machine" "workflow" {
   }
 }
 
-resource "aws_sfn_alias" "workflow" {
-  name = "${var.project_name}-workflow"
+resource "aws_iam_role" "wait_for_rds_ready" {
+  name_prefix        = "${var.project_name}-wait-for-rds-ready-"
+  assume_role_policy = data.aws_iam_policy_document.wait_for_rds_ready_assume_policy.json
+}
 
-  routing_configuration {
-    state_machine_version_arn = aws_sfn_state_machine.workflow.state_machine_version_arn
-    weight                    = 100
+data "aws_iam_policy_document" "wait_for_rds_ready_assume_policy" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["states.amazonaws.com"]
+    }
   }
+}
+
+data "aws_iam_policy_document" "wait_for_rds_ready_policy" {
+  # Allow logging actions
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogDelivery",
+      "logs:CreateLogStream",
+      "logs:GetLogDelivery",
+      "logs:UpdateLogDelivery",
+      "logs:DeleteLogDelivery",
+      "logs:ListLogDeliveries",
+      "logs:PutLogEvents",
+      "logs:PutResourcePolicy",
+      "logs:DescribeResourcePolicies",
+      "logs:DescribeLogGroups"
+    ]
+    resources = ["*"]
+  }
+
+  # Allow reading RDS instance information and status
+  statement {
+    effect    = "Allow"
+    actions   = ["rds:DescribeDBInstances"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "wait_for_rds_ready" {
+  name_prefix = "${var.project_name}-wait-for-rds-ready-policy-"
+  role        = aws_iam_role.wait_for_rds_ready.name
+  policy      = data.aws_iam_policy_document.wait_for_rds_ready_policy.json
+}
+
+# Sub-workflow as "wait for RDS ready" state machine
+resource "aws_sfn_state_machine" "wait_for_rds_ready" {
+  name_prefix = "${var.project_name}-wait-for-rds-ready-"
+  role_arn    = aws_iam_role.wait_for_rds_ready.arn
+  definition  = jsonencode(yamldecode(file("${local.workflow_template_dir}/wait-for-rds-ready.asl.yaml")))
 }
 
 resource "aws_cloudwatch_log_group" "workflow" {
