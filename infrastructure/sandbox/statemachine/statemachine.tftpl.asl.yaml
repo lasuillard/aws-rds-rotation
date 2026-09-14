@@ -15,8 +15,7 @@ States:
             "newDbId": $exists($states.input.newDbId)
               ? $states.input.newDbId
               : $dbIdPrefix & $now("[Y0001][M01][D01]t[H01][m01][s01]", "+0900"),
-            "snapshotId": $states.input.snapshotId,
-            "dbPasswordSecretId": $states.input.db_password_secret_id
+            "snapshotId": $states.input.snapshotId
           }
         ) %}
     Comment: Prepare variables for the workflow.
@@ -92,7 +91,7 @@ States:
               Payload: |-
                 {% {
                   "dbId": $inputs.newDbId,
-                  "dbPasswordSecretId": $inputs.dbPasswordSecretId
+                  "dbPasswordSecretId": "${tftpl.db_password_secret_id}"
                 } %}
               FunctionName: ${tftpl.rds_password_updater_function_name}
             Retry:
