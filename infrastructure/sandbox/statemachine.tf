@@ -48,6 +48,7 @@ module "rds_rotation" {
     lambda = {
       lambda = [module.rds_password_updater.lambda_function_arn]
     }
+
     stepfunction = {
       stepfunction = [module.wait_for_rds_ready.state_machine_arn]
     }
@@ -55,6 +56,12 @@ module "rds_rotation" {
     # Express (synchronous) step function integration. Although our workflows use Standard type only,
     # this integration provides necessary IAM permissions for .sync integration of the step function.
     stepfunction_Sync = {
+      # Omitted below because it is for Express Workflows (states:StartSyncExecution)
+      # stepfunction = [...]
+
+      stepfunction_Wildcard = [
+        "arn:aws:states:${local.aws_region}:${local.aws_account_id}:execution:${module.wait_for_rds_ready.state_machine_name}:*"
+      ]
       events = true
     }
 
