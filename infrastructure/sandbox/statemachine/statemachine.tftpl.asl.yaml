@@ -98,11 +98,11 @@ States:
               Input:
                 AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
                 dbId: "{% $inputs.newDbId %}"
-                waitSeconds: 30
+                waitSeconds: 10
           Update RDS password:
             Type: Task
             Resource: arn:aws:states:::lambda:invoke
-            Next: Wait for RDS ready
+            Next: Wait for RDS password update
             Arguments:
               Payload: |-
                 {% {
@@ -121,7 +121,7 @@ States:
                 MaxAttempts: 3
                 BackoffRate: 2
                 JitterStrategy: FULL
-          Wait for RDS ready:
+          Wait for RDS password update:
             Type: Task
             Resource: arn:aws:states:::states:startExecution.sync:2
             Next: Sanitize data
@@ -130,7 +130,7 @@ States:
               Input:
                 AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
                 dbId: "{% $inputs.newDbId %}"
-                waitSeconds: 30
+                waitSeconds: 10
             Assign:
               dbInfo: "{% $states.result.Output.dbInfo %}"
           Sanitize data:
@@ -147,13 +147,13 @@ States:
           Attach standard security group:
             Type: Task
             Resource: arn:aws:states:::aws-sdk:rds:modifyDBInstance
-            Next: Wait for RDS ready after SG update
+            Next: Wait for RDS security group update
             Arguments:
               DbInstanceIdentifier: "{% $inputs.newDbId %}"
               VpcSecurityGroupIds: "{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId : $tftpl.vpc_security_group_ids %}"
               ApplyImmediately: true
             Output: "{% $states.input %}"
-          Wait for RDS ready after SG update:
+          Wait for RDS security group update:
             Type: Task
             Resource: arn:aws:states:::states:startExecution.sync:2
             End: true
