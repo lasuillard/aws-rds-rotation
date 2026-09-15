@@ -11,7 +11,7 @@ This setup creates the RDS database with initial data for use in the main demo e
 
 1. `terraform apply` to create initial database
 
-    RDS provisioned and database initialization is performed via [AWS Systems Manager Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html). We use [Pagila](https://github.com/devrimgunduz/pagila) sample dataset.
+    RDS provisioned and database initialization is performed via `psql` over [Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html). We use [Pagila](https://github.com/devrimgunduz/pagila) sample dataset.
 
 1. `terraform output` to view the outputs, including the final snapshot identifier.
 
