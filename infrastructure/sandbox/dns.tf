@@ -18,5 +18,9 @@ resource "aws_route53_record" "db" {
   name    = var.route53_db_record_name
   type    = "CNAME"
   ttl     = 60
-  records = ["127.0.0.1"] # Placeholder for the actual RDS instance address
+
+  # Before the first rotation workflow completes successfully, the database DNS record initially points to 127.0.0.1 (placeholder).
+  # Any dependent applications starting in the sandbox before the first rotation will fail to connect.
+  # You must run the rotation workflow at least once to populate the actual database endpoint in the DNS record.
+  records = ["127.0.0.1"]
 }
