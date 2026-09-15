@@ -22,19 +22,24 @@ module "rds_rotation" {
       tftpl = {
         db_id_prefix                   = local.db_id_prefix
         db_subnet_group_name           = aws_db_subnet_group.db.name
-        publicly_accessible            = false
-        vpc_security_group_ids         = [aws_security_group.db.id]
-        db_isolated_security_group_ids = [aws_security_group.db_isolated.id]
+        db_vpc_security_group_ids      = [module.db_sg.id]
+        db_isolated_security_group_ids = [module.db_isolated_sg.id]
         db_tags                        = local.db_tags
         db_password_secret_id          = local.db_password_ref
 
         route53_hosted_zone_id = aws_route53_zone.phz.id
-        route53_domain_name    = var.route53_db_record_name
+        route53_domain_name    = aws_route53_record.db.name
 
         # Components
-        wait_for_rds_ready_state_machine_arn = module.wait_for_rds_ready.state_machine_arn
-        rds_password_updater_function_name   = module.rds_password_updater.lambda_function_name
-        data_sanitization_project_name       = aws_codebuild_project.db_sanitizer.name
+        wait_for_ready = {
+          state_machine_arn = module.wait_for_rds_ready.state_machine_arn
+        }
+        rds_password_updater = {
+          lambda_function_name = module.rds_password_updater.lambda_function_name
+        }
+        data_sanitizer = {
+          codebuild_project_name = aws_codebuild_project.data_sanitizer.name
+        }
       }
     }
   )))
@@ -67,7 +72,7 @@ module "rds_rotation" {
     }
 
     codebuild_StartBuild_Sync = {
-      codebuild = [aws_codebuild_project.db_sanitizer.arn]
+      codebuild = [aws_codebuild_project.data_sanitizer.arn]
       events    = ["arn:aws:events:${local.aws_region}:${local.aws_account_id}:rule/StepFunctionsGetEventForCodeBuildStartBuildRule"]
     }
   }

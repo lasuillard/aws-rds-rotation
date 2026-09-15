@@ -24,7 +24,7 @@ resource "aws_db_instance" "db" {
   engine                 = "postgres"
   engine_version         = "18"
   db_subnet_group_name   = aws_db_subnet_group.db.name
-  vpc_security_group_ids = [aws_security_group.db.id]
+  vpc_security_group_ids = [module.db_sg.id]
   multi_az               = false
 
   # Free-tier eligible
@@ -60,22 +60,23 @@ resource "aws_db_subnet_group" "db" {
   subnet_ids  = module.vpc.private_subnets
 }
 
-resource "aws_security_group" "db" {
-  vpc_id = module.vpc.vpc_id
+module "db_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 6.0"
 
-  name_prefix = "${var.project_name}-db-sg-"
+  name        = "${var.project_name}-db-sg"
   description = "Database security group"
-}
+  vpc_id      = module.vpc.vpc_id
 
-resource "aws_vpc_security_group_ingress_rule" "rds_from_bastion" {
-  security_group_id = aws_security_group.db.id
-
-  description = "Allow connection from bastion host"
-
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
-  referenced_security_group_id = aws_security_group.bastion.id
+  ingress_rules = {
+    from_bastion = {
+      description                  = "Allow connection from bastion host"
+      ip_protocol                  = "tcp"
+      from_port                    = 5432
+      to_port                      = 5432
+      referenced_security_group_id = module.bastion_sg.id
+    }
+  }
 }
 
 resource "null_resource" "db_initializer" {

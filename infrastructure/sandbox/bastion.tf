@@ -22,34 +22,31 @@ module "bastion" {
   ami                    = data.aws_ami.al2023.id
   instance_type          = "t4g.micro"
   subnet_id              = module.vpc.private_subnets[0]
-  vpc_security_group_ids = [aws_security_group.bastion.id]
+  vpc_security_group_ids = [module.bastion_sg.id]
 }
 
-resource "aws_security_group" "bastion" {
-  vpc_id = module.vpc.vpc_id
+module "bastion_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 6.0"
 
-  name_prefix = "${var.project_name}-bastion-sg-"
+  name        = "${var.project_name}-bastion-sg"
   description = "Security group for the bastion host"
-}
+  vpc_id      = module.vpc.vpc_id
 
-resource "aws_vpc_security_group_egress_rule" "bastion_to_all_https" {
-  security_group_id = aws_security_group.bastion.id
-
-  description = "Allow all outbound HTTPS traffic (for the Session Manager)"
-
-  from_port   = 443
-  to_port     = 443
-  ip_protocol = "tcp"
-  cidr_ipv4   = "0.0.0.0/0"
-}
-
-resource "aws_vpc_security_group_egress_rule" "bastion_to_rds" {
-  security_group_id = aws_security_group.bastion.id
-
-  description = "Allow access to the RDS instance from the bastion host"
-
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
-  referenced_security_group_id = aws_security_group.db.id
+  egress_rules = {
+    all_https = {
+      description = "Allow all outbound HTTPS traffic (for the Session Manager)"
+      ip_protocol = "tcp"
+      from_port   = 443
+      to_port     = 443
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+    rds = {
+      description                  = "Allow access to the RDS instance from the bastion host"
+      ip_protocol                  = "tcp"
+      from_port                    = 5432
+      to_port                      = 5432
+      referenced_security_group_id = module.db_sg.id
+    }
+  }
 }

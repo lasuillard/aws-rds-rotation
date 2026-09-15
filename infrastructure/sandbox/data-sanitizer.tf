@@ -8,7 +8,7 @@ module "codebuild_artifacts" {
   source  = "terraform-aws-modules/s3-bucket/aws"
   version = "~> 5.0"
 
-  bucket_prefix = "${var.project_name}-db-sanitizer-"
+  bucket_prefix = "${var.project_name}-data-sanitizer-"
   force_destroy = true
 }
 
@@ -41,11 +41,11 @@ data "aws_iam_policy_document" "codebuild_assume_role_policy" {
 }
 
 resource "aws_iam_role" "codebuild_role" {
-  name               = "${var.project_name}-db-sanitizer-role"
+  name               = "${var.project_name}-data-sanitizer-role"
   assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role_policy.json
 }
 
-data "aws_iam_policy_document" "db_sanitizer_role_policy" {
+data "aws_iam_policy_document" "data_sanitizer_role_policy" {
   # Allow EC2 network interface management for CodeBuild within a VPC
   # https://docs.aws.amazon.com/codebuild/latest/userguide/auth-and-access-control-iam-identity-based-access-control.html#customer-managed-policies-example-create-vpc-network-interface
   statement {
@@ -110,8 +110,8 @@ data "aws_iam_policy_document" "db_sanitizer_role_policy" {
       "logs:PutLogEvents"
     ]
     resources = [
-      aws_cloudwatch_log_group.db_sanitizer_logs.arn,
-      "${aws_cloudwatch_log_group.db_sanitizer_logs.arn}:*"
+      aws_cloudwatch_log_group.data_sanitizer_logs.arn,
+      "${aws_cloudwatch_log_group.data_sanitizer_logs.arn}:*"
     ]
   }
 
@@ -126,23 +126,23 @@ data "aws_iam_policy_document" "db_sanitizer_role_policy" {
 resource "aws_iam_role_policy" "codebuild_policy" {
   name   = "${var.project_name}-codebuild-policy"
   role   = aws_iam_role.codebuild_role.id
-  policy = data.aws_iam_policy_document.db_sanitizer_role_policy.json
+  policy = data.aws_iam_policy_document.data_sanitizer_role_policy.json
 }
 
-resource "aws_cloudwatch_log_group" "db_sanitizer_logs" {
-  name              = "/aws/codebuild/${var.project_name}-db-sanitizer"
+resource "aws_cloudwatch_log_group" "data_sanitizer_logs" {
+  name              = "/aws/codebuild/${var.project_name}-data-sanitizer"
   retention_in_days = 3
 }
 
-resource "aws_codebuild_project" "db_sanitizer" {
-  name         = "${var.project_name}-db-sanitizer"
+resource "aws_codebuild_project" "data_sanitizer" {
+  name         = "${var.project_name}-data-sanitizer"
   description  = "Database sanitization pipeline for ${var.project_name}"
   service_role = aws_iam_role.codebuild_role.arn
 
   vpc_config {
     vpc_id             = module.vpc.vpc_id
     subnets            = module.vpc.private_subnets
-    security_group_ids = [aws_security_group.db_sanitizer.id]
+    security_group_ids = [module.data_sanitizer_sg.id]
   }
 
   build_timeout = 60 # In minutes
@@ -210,45 +210,31 @@ resource "aws_codebuild_project" "db_sanitizer" {
   logs_config {
     cloudwatch_logs {
       status     = "ENABLED"
-      group_name = aws_cloudwatch_log_group.db_sanitizer_logs.name
+      group_name = aws_cloudwatch_log_group.data_sanitizer_logs.name
     }
   }
 }
 
-resource "aws_security_group" "db_sanitizer" {
-  vpc_id = module.vpc.vpc_id
+module "data_sanitizer_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 6.0"
 
-  name_prefix = "${var.project_name}-db-sanitizer-sg-"
-  description = "Security group for the db sanitizer"
-}
+  name        = "${var.project_name}-data-sanitizer-sg"
+  description = "Security group for the data sanitizer"
+  vpc_id      = module.vpc.vpc_id
 
-resource "aws_vpc_security_group_egress_rule" "db_sanitizer_to_all" {
-  security_group_id = aws_security_group.db_sanitizer.id
-
-  description = "Allow all outbound traffic"
-
-  cidr_ipv4   = "0.0.0.0/0"
-  ip_protocol = -1
-}
-
-resource "aws_vpc_security_group_egress_rule" "db_sanitizer_to_rds" {
-  security_group_id = aws_security_group.db_sanitizer.id
-
-  description = "Allow access to the RDS instance from the CodeBuild project"
-
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
-  referenced_security_group_id = aws_security_group.db.id
-}
-
-resource "aws_vpc_security_group_egress_rule" "db_sanitizer_to_rds_isolated" {
-  security_group_id = aws_security_group.db_sanitizer.id
-
-  description = "Allow access to the isolated RDS instance from the CodeBuild project"
-
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
-  referenced_security_group_id = aws_security_group.db_isolated.id
+  egress_rules = {
+    to_all = {
+      description = "Allow all outbound traffic"
+      ip_protocol = "-1"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+    to_rds_isolated = {
+      description                  = "Allow access to the isolated RDS instance from the CodeBuild project"
+      ip_protocol                  = "tcp"
+      from_port                    = 5432
+      to_port                      = 5432
+      referenced_security_group_id = module.db_isolated_sg.id
+    }
+  }
 }
