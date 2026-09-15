@@ -147,7 +147,6 @@ States:
                 - {Name: "DB_NAME", Type: "PLAINTEXT", Value: "{% $dbInfo.name %}"}
                 - {Name: "DB_HOST", Type: "PLAINTEXT", Value: "{% $dbInfo.host %}"}
                 - {Name: "DB_USER", Type: "PLAINTEXT", Value: "{% $dbInfo.user %}"}
-            Output: "{% { 'dbInfo': $dbInfo } %}"
           Attach standard security group:
             Type: Task
             Resource: arn:aws:states:::aws-sdk:rds:modifyDBInstance
@@ -167,6 +166,7 @@ States:
                 AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
                 dbId: "{% $inputs.newDbId %}"
                 waitSeconds: 10
+            Output: "{% { 'dbInfo': $dbInfo } %}"
     Catch:
       - ErrorEquals:
           - States.ALL
