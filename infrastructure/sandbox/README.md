@@ -1,11 +1,8 @@
-# Infrastructure - Sandbox
+# Sandbox
 
 This directory contains the Terraform configuration files for deploying the AWS RDS Rotation sandbox.
 
 ## How to use this sandbox
-
-> [!NOTE]
-> Bastion host is not strictly necessary in this sandbox stack. It is provisioned for manual access to the private resources (database) for review or troubleshooting purposes.
 
 1. `terraform apply` to deploy the sandbox environment.
 
@@ -14,6 +11,8 @@ This directory contains the Terraform configuration files for deploying the AWS 
     ![Start new SFN execution](./docs/start-new-sfn-execution.png)
 
 3. `terraform destroy` to clean up the resources. Remember to manually delete any resources not tracked by Terraform as mentioned above.
+
+Test commands are exposed as output for convenience. For example, you can run `sh -c "$(tf output -raw psql_command)"` to connect to the test database.
 
 ## Cleanup
 

@@ -1,4 +1,4 @@
-# Infrastructure - Setup
+# Setup
 
 > [!NOTE]
 > If you have our own existing database snapshot, you can use it instead of creating a new one. You can skip this setup entirely.

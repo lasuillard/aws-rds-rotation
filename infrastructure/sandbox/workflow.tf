@@ -111,7 +111,7 @@ module "wait_for_rds_ready" {
   version = "~> 5.0"
 
   name       = "${var.project_name}-wait-for-rds-ready"
-  definition  = jsonencode(yamldecode(file("${local.workflow_template_dir}/wait-for-rds-ready.asl.yaml")))
+  definition = jsonencode(yamldecode(file("${local.workflow_template_dir}/wait-for-rds-ready.asl.yaml")))
 
   logging_configuration = {
     include_execution_data = true

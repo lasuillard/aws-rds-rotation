@@ -4,7 +4,7 @@
 Connect to the RDS database via tunnel using SSM Session Manager.
 
 Usage:
-  PGPASSWORD=<password> psql.sh <local-port> <ec2-instance-id> <remote-host> <remote-port>
+  PGPASSWORD=<password> psql.sh <local-port> <ec2-instance-id> <remote-host> <remote-port> [...]
 '
 
 set -o pipefail
