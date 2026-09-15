@@ -57,11 +57,11 @@ check "db_snapshot_does_not_exist" {
 
 resource "aws_db_subnet_group" "db" {
   name_prefix = "${var.project_name}-db-subnet-group-"
-  subnet_ids  = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+  subnet_ids  = module.vpc.private_subnets
 }
 
 resource "aws_security_group" "db" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = module.vpc.vpc_id
 
   name_prefix = "${var.project_name}-db-sg-"
   description = "Database security group"
@@ -92,7 +92,7 @@ resource "null_resource" "db_initializer" {
       PGCONNECT_TIMEOUT = 30
     }
     command = <<-CMD
-      '${path.module}/scripts/init-db.sh' 5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
+      '${path.module}/scripts/init-db.sh' 5432 '${module.bastion.id}' '${local.db_host}' '${local.db_port}'
     CMD
   }
 }

@@ -43,7 +43,7 @@ variable "db_name" {
 variable "db_username" {
   type        = string
   description = "Master username for the database"
-  default     = "admin"
+  default     = "dbadmin"
 }
 
 variable "db_password" {

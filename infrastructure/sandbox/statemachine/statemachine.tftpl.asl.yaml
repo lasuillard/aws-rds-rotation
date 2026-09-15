@@ -79,7 +79,7 @@ States:
                 $tftpl.publicly_accessible %}'
               VpcSecurityGroupIds: '{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId
                 : $tftpl.vpc_security_group_ids %}'
-              EnableIamDatabaseAuthentication: false
+              EnableIAMDatabaseAuthentication: false
               Tags:
                 - Key: Project
                   Value: aws-rds-rotation
