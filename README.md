@@ -93,7 +93,7 @@ Also note that this project requires appropriate IAM permissions, which means it
 $ cd infrastructure/setup
 $ terraform init
 
-# Create initial database, seeding with Pagilla dataset
+# Create initial database, seeding with Pagila dataset
 $ terraform apply
 
 # Get the base snapshot identifier
@@ -117,7 +117,7 @@ $ terraform init
 $ terraform apply
 ```
 
-Now we can start a new Step Functions execution to trigger the RDS rotation workflow. refer to the example input: [./infrastructure/sandbox/statemachine/input.json.example](./infrastructure/sandbox/statemachine/input.json.example)
+Now we can start a new Step Functions execution to trigger the RDS rotation workflow. Set `snapshotId` in the example input to the value returned by `terraform output -raw base_snapshot_id`. Refer to the example input: [./infrastructure/sandbox/statemachine/input.json.example](./infrastructure/sandbox/statemachine/input.json.example)
 
 ![Start new SFN execution](./docs/start-new-sfn-execution.png)
 
