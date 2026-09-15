@@ -13,21 +13,20 @@ data "aws_ami" "al2023" {
   }
 }
 
-resource "aws_instance" "bastion" {
+module "bastion" {
+  source  = "terraform-aws-modules/ec2-instance/aws"
+  version = "~> 6.0"
+
+  name = "${var.project_name}-bastion"
+
   ami                    = data.aws_ami.al2023.id
-  subnet_id              = aws_subnet.public.id
+  instance_type          = "t4g.micro"
+  subnet_id              = module.vpc.public_subnets[0]
   vpc_security_group_ids = [aws_security_group.bastion.id]
-
-  # Free-tier eligible
-  instance_type = "t4g.micro"
-
-  tags = {
-    Name = "${var.project_name}-bastion"
-  }
 }
 
 resource "aws_security_group" "bastion" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = module.vpc.vpc_id
 
   name_prefix = "${var.project_name}-bastion-sg-"
   description = "Security group for the bastion host"
@@ -56,11 +55,11 @@ resource "aws_vpc_security_group_egress_rule" "bastion_to_rds" {
 }
 
 resource "null_resource" "wait_for_bastion_ready" {
-  depends_on = [aws_instance.bastion]
+  depends_on = [module.bastion]
 
   provisioner "local-exec" {
     command = <<-CMD
-      '${path.module}/scripts/wait-for-ready.sh' '${aws_instance.bastion.id}' \
+      '${path.module}/scripts/wait-for-ready.sh' '${module.bastion.id}' \
     CMD
   }
 }

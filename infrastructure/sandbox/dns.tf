@@ -4,7 +4,7 @@ resource "aws_route53_zone" "phz" {
   force_destroy = true
 
   vpc {
-    vpc_id = aws_vpc.main.id
+    vpc_id = module.vpc.vpc_id
   }
 }
 

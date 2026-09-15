@@ -1,104 +1,26 @@
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr_block
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 6.0"
 
-  tags = {
-    Name = "${var.project_name}-vpc"
-  }
-}
+  name = "${var.project_name}-vpc"
+  cidr = var.vpc_cidr_block
 
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.vpc_public_subnet_cidr_block
+  azs             = slice(data.aws_availability_zones.available.names, 0, 2)
+  public_subnets  = [var.vpc_public_subnet_cidr_block]
+  private_subnets = [var.vpc_private_subnet_1_cidr_block, var.vpc_private_subnet_2_cidr_block]
+
+  enable_nat_gateway     = true
+  single_nat_gateway     = true
+  one_nat_gateway_per_az = false
+
   map_public_ip_on_launch = true
+  enable_dns_hostnames    = true
+  enable_dns_support      = true
 
-  tags = {
+  public_subnet_tags = {
     Name = "${var.project_name}-public"
   }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
-  }
-
-  tags = {
-    Name = "${var.project_name}-public-rt"
-  }
-}
-
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
-}
-
-# At least 2 subnets in different AZs are required for RDS, even though only 1 will be used
-resource "aws_subnet" "private_1" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.vpc_private_subnet_1_cidr_block
-  availability_zone = data.aws_availability_zones.available.names[0]
-
-  tags = {
+  private_subnet_tags = {
     Name = "${var.project_name}-private"
   }
-}
-
-resource "aws_subnet" "private_2" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.vpc_private_subnet_2_cidr_block
-  availability_zone = data.aws_availability_zones.available.names[1]
-
-  tags = {
-    Name = "${var.project_name}-private"
-  }
-}
-
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat.id
-  }
-
-  tags = {
-    Name = "${var.project_name}-private-rt"
-  }
-}
-
-resource "aws_route_table_association" "private_1" {
-  subnet_id      = aws_subnet.private_1.id
-  route_table_id = aws_route_table.private.id
-}
-
-resource "aws_route_table_association" "private_2" {
-  subnet_id      = aws_subnet.private_2.id
-  route_table_id = aws_route_table.private.id
-}
-
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${var.project_name}-igw"
-  }
-}
-
-# NAT is required for private subnets to access the internet, such as installing
-# necessary packages or interacting with AWS API.
-resource "aws_eip" "nat" {
-  depends_on = [aws_internet_gateway.igw]
-
-  domain = "vpc"
-}
-
-resource "aws_nat_gateway" "nat" {
-  depends_on = [aws_internet_gateway.igw]
-
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public.id
 }

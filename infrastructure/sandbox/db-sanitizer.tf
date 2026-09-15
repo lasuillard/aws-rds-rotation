@@ -64,7 +64,7 @@ data "aws_iam_policy_document" "db_sanitizer_role_policy" {
     condition {
       test     = "ArnEquals"
       variable = "ec2:Subnet"
-      values   = [aws_subnet.private_1.arn, aws_subnet.private_2.arn]
+      values   = module.vpc.private_subnet_arns
     }
   }
 
@@ -140,8 +140,8 @@ resource "aws_codebuild_project" "db_sanitizer" {
   service_role = aws_iam_role.codebuild_role.arn
 
   vpc_config {
-    vpc_id             = aws_vpc.main.id
-    subnets            = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+    vpc_id             = module.vpc.vpc_id
+    subnets            = module.vpc.private_subnets
     security_group_ids = [aws_security_group.db_sanitizer.id]
   }
 
@@ -212,7 +212,7 @@ resource "aws_codebuild_project" "db_sanitizer" {
 }
 
 resource "aws_security_group" "db_sanitizer" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = module.vpc.vpc_id
 
   name_prefix = "${var.project_name}-db-sanitizer-sg-"
   description = "Security group for the db sanitizer"

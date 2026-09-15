@@ -11,6 +11,6 @@ output "psql_command" {
     PGUSER='${local.db_username}' \
     PGPASSWORD='${local.db_password}' \
     ${abspath("${path.module}/../../scripts/psql.sh")} \
-      5432 '${aws_instance.bastion.id}' '${local.db_host}' '${local.db_port}'
+      5432 '${module.bastion.id}' '${local.db_host}' '${local.db_port}'
   CMD
 }
