@@ -241,3 +241,14 @@ resource "aws_vpc_security_group_egress_rule" "db_sanitizer_to_rds" {
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.db.id
 }
+
+resource "aws_vpc_security_group_egress_rule" "db_sanitizer_to_rds_isolated" {
+  security_group_id = aws_security_group.db_sanitizer.id
+
+  description = "Allow access to the isolated RDS instance from the CodeBuild project"
+
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.db_isolated.id
+}

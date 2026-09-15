@@ -20,12 +20,13 @@ module "rds_rotation" {
     {
       # Give unique namespace for template variables to distinguish them in the template
       tftpl = {
-        db_id_prefix           = local.db_id_prefix
-        db_subnet_group_name   = aws_db_subnet_group.db.name
-        publicly_accessible    = false
-        vpc_security_group_ids = [aws_security_group.db.id]
-        db_tags                = local.db_tags
-        db_password_secret_id  = local.db_password_ref
+        db_id_prefix                   = local.db_id_prefix
+        db_subnet_group_name           = aws_db_subnet_group.db.name
+        publicly_accessible            = false
+        vpc_security_group_ids         = [aws_security_group.db.id]
+        db_isolated_security_group_ids = [aws_security_group.db_isolated.id]
+        db_tags                        = local.db_tags
+        db_password_secret_id          = local.db_password_ref
 
         route53_hosted_zone_id = aws_route53_zone.phz.id
         route53_domain_name    = var.route53_db_record_name

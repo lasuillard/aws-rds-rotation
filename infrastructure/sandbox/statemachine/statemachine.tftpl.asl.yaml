@@ -24,6 +24,7 @@ States:
           "db_subnet_group_name": "${tftpl.db_subnet_group_name}",
           "publicly_accessible": "${tftpl.publicly_accessible}",
           "vpc_security_group_ids": ["${join("\", \"", tftpl.vpc_security_group_ids)}"],
+          "db_isolated_security_group_ids": ["${join("\", \"", tftpl.db_isolated_security_group_ids)}"],
           "wait_for_rds_ready_state_machine_arn": "${tftpl.wait_for_rds_ready_state_machine_arn}",
           "db_password_secret_id": "${tftpl.db_password_secret_id}",
           "rds_password_updater_function_name": "${tftpl.rds_password_updater_function_name}",
@@ -77,8 +78,7 @@ States:
                 $tftpl.db_subnet_group_name %}'
               PubliclyAccessible: '{% $oldDb ? $oldDb.PubliclyAccessible :
                 $tftpl.publicly_accessible %}'
-              VpcSecurityGroupIds: '{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId
-                : $tftpl.vpc_security_group_ids %}'
+              VpcSecurityGroupIds: '{% $tftpl.db_isolated_security_group_ids %}'
               EnableIAMDatabaseAuthentication: false
               Tags:
                 - Key: Project
@@ -136,7 +136,7 @@ States:
           Sanitize data:
             Type: Task
             Resource: arn:aws:states:::codebuild:startBuild.sync
-            End: true
+            Next: Attach standard security group
             Arguments:
               ProjectName: "{% $tftpl.data_sanitization_project_name %}"
               EnvironmentVariablesOverride:
@@ -144,6 +144,25 @@ States:
                 - {Name: "DB_HOST", Type: "PLAINTEXT", Value: "{% $dbInfo.host %}"}
                 - {Name: "DB_USER", Type: "PLAINTEXT", Value: "{% $dbInfo.user %}"}
             Output: "{% { 'dbInfo': $dbInfo } %}"
+          Attach standard security group:
+            Type: Task
+            Resource: arn:aws:states:::aws-sdk:rds:modifyDBInstance
+            Next: Wait for RDS ready after SG update
+            Arguments:
+              DbInstanceIdentifier: "{% $inputs.newDbId %}"
+              VpcSecurityGroupIds: "{% $oldDb ? $oldDb.VpcSecurityGroups[].VpcSecurityGroupId : $tftpl.vpc_security_group_ids %}"
+              ApplyImmediately: true
+            Output: "{% $states.input %}"
+          Wait for RDS ready after SG update:
+            Type: Task
+            Resource: arn:aws:states:::states:startExecution.sync:2
+            End: true
+            Arguments:
+              StateMachineArn: "{% $tftpl.wait_for_rds_ready_state_machine_arn %}"
+              Input:
+                AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID: "{% $states.context.Execution.Id %}"
+                dbId: "{% $inputs.newDbId %}"
+                waitSeconds: 10
     Catch:
       - ErrorEquals:
           - States.ALL
@@ -167,7 +186,7 @@ States:
   Switch traffic to the new database:
     Type: Task
     Resource: arn:aws:states:::aws-sdk:route53:changeResourceRecordSets
-    Next: Old instance exists?
+    Next: Wait for DNS propagation
     Arguments:
       HostedZoneId: "{% $tftpl.route53_hosted_zone_id %}"
       ChangeBatch:
@@ -179,6 +198,10 @@ States:
               Ttl: 60
               ResourceRecords:
                 - Value: "{% $dbInfo.host %}"
+  Wait for DNS propagation:
+    Type: Wait
+    Seconds: 60
+    Next: Old instance exists?
   Old instance exists?:
     Type: Choice
     Default: No instance to delete

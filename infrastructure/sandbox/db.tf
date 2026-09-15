@@ -88,3 +88,21 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_db_sanitizer" {
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.db_sanitizer.id
 }
+
+resource "aws_security_group" "db_isolated" {
+  vpc_id = module.vpc.vpc_id
+
+  name_prefix = "${var.project_name}-db-isolated-sg-"
+  description = "Isolated Database security group for rotation"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "db_isolated_from_db_sanitizer" {
+  security_group_id = aws_security_group.db_isolated.id
+
+  description = "Allow inbound traffic from the db sanitizer security group only"
+
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.db_sanitizer.id
+}
