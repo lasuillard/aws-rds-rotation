@@ -172,10 +172,14 @@ resource "aws_codebuild_project" "db_sanitizer" {
           commands = [
             "echo 'Running SQL files...'",
             <<-COMMAND
+            set -o errexit
+            set -o nounset
+            set -o pipefail
+
             sql_files=($(ls *.sql))
             for sql_file in "$${sql_files[@]}"; do
               echo "Running $sql_file..."
-              PGPASSWORD="$DB_PASSWORD" psql --host="$DB_HOST" --username="$DB_USER" --dbname="$DB_NAME" --file="$sql_file"
+              PGPASSWORD="$DB_PASSWORD" psql -v ON_ERROR_STOP=1 --host="$DB_HOST" --username="$DB_USER" --dbname="$DB_NAME" --file="$sql_file"
             done
             COMMAND
             ,
