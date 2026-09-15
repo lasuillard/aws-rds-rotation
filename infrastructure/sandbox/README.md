@@ -12,11 +12,11 @@ This directory contains the Terraform configuration files for deploying the AWS 
 
 3. `terraform destroy` to clean up the resources. Remember to manually delete any resources not tracked by Terraform as mentioned above.
 
-Test commands are exposed as output for convenience. For example, you can run `sh -c "$(tf output -raw psql_command)"` to connect to the test database.
+Test commands are exposed as outputs for convenience. For example, you can run `sh -c "$(terraform output -raw psql_command)"` to connect to the test database.
 
 ## Technical details
 
-Main workflow consists of various AWS services including Step Functions, Lambda, CodeBuild, and so on. Below is a breakdown of the key components and their roles within the sandbox environment.
+The main workflow consists of various AWS services including Step Functions, Lambda, CodeBuild, and so on. Below is a breakdown of the key components and their roles within the sandbox environment.
 
 ### Step Functions
 

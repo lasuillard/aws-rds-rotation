@@ -51,12 +51,12 @@ Run `nix develop` to activate the environment. This will automatically install t
 
 ### 🧪 Set up and testing
 
-This project contains two main Terraform projects: **setup** and **sandbox**. The former project is responsible for creating a RDS snapshot, while the latter project is for deploying and interacting with the sandbox environment to develop and test the RDS rotation workflow.
+This project contains two main Terraform projects: **setup** and **sandbox**. The former project is responsible for creating an RDS snapshot, while the latter project is for deploying and interacting with the sandbox environment to develop and test the RDS rotation workflow.
 
 1. Go to [setup](./infrastructure/setup/README.md) project first. Create the RDS snapshot there, if you don't already have one.
 1. Then go to the [sandbox](./infrastructure/sandbox/README.md) project to provision the sandbox environment and interact with it.
 
-For detailed instructions, please refer to the respective README files in the each project directory.
+For detailed instructions, please refer to the respective README files in each project directory.
 
 ## 📜 License
 
