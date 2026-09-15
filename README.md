@@ -6,8 +6,7 @@ A demo project for automating RDS database recreation from a snapshot.
 
 ## 👀 Overview
 
-RDS rotation is a process of replacing a database with a new one from a snapshot.
-The primary usage is to create a new development database from a production database snapshot with sensitive data masked and scrubbed.
+RDS rotation is a process of replacing a database with a new one from a snapshot. The primary usage is to create a new development database from a production database snapshot with sensitive data masked and scrubbed.
 
 ![Step Functions graph](./docs/stepfunctions-graph.png)
 
@@ -82,7 +81,7 @@ This repository uses [Nix Flakes](https://nix.dev/concepts/flakes.html) to manag
 
 Run `nix develop` to activate the environment. This will automatically install the above tools. Alternatively, you can use the included [Dev Container configuration](./.devcontainer.example/devcontainer.json) which has Nix installed.
 
-Also note that this project requires appropriate IAM permissions, which means it requires administrative privileges for managing AWS resources such as IAM, VPC, Step Functions, EC2, RDS, Route 53, Lambda, CodeBuild, etc.
+Also note that this project requires appropriate IAM permissions, which means it requires administrative privileges for managing AWS resources such as IAM, VPC, Step Functions, EC2, RDS, Route 53, Lambda, CodeBuild, and so on.
 
 ### 📝 Create initial RDS snapshot
 
@@ -117,7 +116,7 @@ $ terraform init
 $ terraform apply
 ```
 
-Now we can start a new Step Functions execution to trigger the RDS rotation workflow. Set `snapshotId` in the example input to the value returned by `terraform output -raw base_snapshot_id`. Refer to the example input: [./infrastructure/sandbox/statemachine/input.json.example](./infrastructure/sandbox/statemachine/input.json.example)
+Now we can start a new Step Functions execution to trigger the RDS rotation workflow. Set `snapshotId` in the example input to the value returned by `terraform output -raw base_snapshot_id` in the previous step. Refer to the example input: [./infrastructure/sandbox/statemachine/input.json.example](./infrastructure/sandbox/statemachine/input.json.example)
 
 ![Start new SFN execution](./docs/start-new-sfn-execution.png)
 
