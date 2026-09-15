@@ -1,7 +1,7 @@
 
 locals {
-  db_host = split(":", module.db.db_instance_endpoint)[0]
-  db_port = split(":", module.db.db_instance_endpoint)[1]
+  db_host = split(":", aws_db_instance.db.endpoint)[0]
+  db_port = split(":", aws_db_instance.db.endpoint)[1]
 
   db_name     = var.db_name
   db_username = var.db_username
@@ -18,37 +18,27 @@ resource "random_password" "db" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-module "db" {
-  source  = "terraform-aws-modules/rds/aws"
-  version = "~> 7.0"
-
+resource "aws_db_instance" "db" {
   identifier = "${var.project_name}-initial"
 
-  engine         = "postgres"
-  engine_version = "18"
-  instance_class = "db.t4g.micro"
-
-  allocated_storage = 20
-  storage_type      = "gp2"
-  multi_az          = false
-
-  db_name                     = local.db_name
-  username                    = local.db_username
-  password_wo                 = local.db_password
-  password_wo_version         = 1
-  manage_master_user_password = false
-
-  # Keep existing behavior: don't create parameter/option groups
-  create_db_parameter_group = false
-  create_db_option_group    = false
-
-  create_db_subnet_group = true
-  subnet_ids             = module.vpc.private_subnets
-
+  engine                 = "postgres"
+  engine_version         = "18"
+  db_subnet_group_name   = aws_db_subnet_group.db.name
   vpc_security_group_ids = [aws_security_group.db.id]
+  multi_az               = false
 
-  skip_final_snapshot              = !var.create_db_snapshot
-  final_snapshot_identifier_prefix = local.db_snapshot_identifier
+  # Free-tier eligible
+  instance_class    = "db.t4g.micro"
+  storage_type      = "gp2"
+  allocated_storage = 20
+
+  db_name  = local.db_name
+  username = local.db_username
+  password = local.db_password
+
+  # Create final snapshot (if configured)
+  skip_final_snapshot       = !var.create_db_snapshot
+  final_snapshot_identifier = local.db_snapshot_identifier
 }
 
 check "db_snapshot_does_not_exist" {
@@ -63,6 +53,11 @@ check "db_snapshot_does_not_exist" {
     condition     = data.aws_rds_snapshots.existing.snapshots == null
     error_message = "DB snapshot with identifier ${local.db_snapshot_identifier} already exists."
   }
+}
+
+resource "aws_db_subnet_group" "db" {
+  name_prefix = "${var.project_name}-db-subnet-group-"
+  subnet_ids  = module.vpc.private_subnets
 }
 
 resource "aws_security_group" "db" {
@@ -84,7 +79,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_bastion" {
 }
 
 resource "null_resource" "db_initializer" {
-  depends_on = [module.db, null_resource.wait_for_bastion_ready]
+  depends_on = [aws_db_instance.db, null_resource.wait_for_bastion_ready]
 
   # Load Pagila dataset (https://github.com/devrimgunduz/pagila)
   provisioner "local-exec" {
