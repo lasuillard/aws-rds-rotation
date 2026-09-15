@@ -42,7 +42,7 @@ module "rds_rotation" {
     include_execution_data = true
     level                  = "ALL"
   }
-  cloudwatch_log_group_retention_in_days = 1
+  cloudwatch_log_group_retention_in_days = 3
 
   service_integrations = {
     lambda = {
@@ -90,7 +90,6 @@ module "rds_rotation" {
       ]
       resources = [
         "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:db:${local.db_id_prefix}*",
-        "arn:aws:rds:${local.aws_region}:${local.aws_account_id}:snapshot:*"
       ]
     }
     route53 = {
@@ -112,13 +111,13 @@ module "wait_for_rds_ready" {
   version = "~> 5.0"
 
   name       = "${var.project_name}-wait-for-rds-ready"
-  definition = jsonencode(yamldecode(templatefile("${local.workflow_template_dir}/wait-for-rds-ready.asl.yaml", {})))
+  definition  = jsonencode(yamldecode(file("${local.workflow_template_dir}/wait-for-rds-ready.asl.yaml")))
 
   logging_configuration = {
     include_execution_data = true
     level                  = "ALL"
   }
-  cloudwatch_log_group_retention_in_days = 1
+  cloudwatch_log_group_retention_in_days = 3
 
   attach_policy_statements = true
   policy_statements = {
