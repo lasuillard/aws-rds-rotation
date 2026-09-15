@@ -57,6 +57,8 @@ The main workflow consists of various AWS services such as Step Functions, Lambd
 
     Manages DNS records to switch traffic to the new RDS database during the rotation process. Database consumers no need to be aware of the underlying database changes, ensuring a seamless transition.
 
+    Note, there might be a brief period of DNS propagation delay (about 1 minute) when switching traffic to the new RDS database. During this time, some clients may still connect to the old database until the DNS changes fully propagate, which might result in temporary inconsistencies or connection issues.
+
 - Other (VPC, CloudWatch, S3, IAM, etc.)
 
     Foundational services that support the overall rotation workflow, such as IAM permissions, networking, execution logs, and so on.
