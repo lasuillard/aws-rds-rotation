@@ -15,12 +15,12 @@ RDS rotation is a process of replacing a database with a new one from a snapshot
 
 ### 📂 Key directory structure
 
-- `infrastructure/sandbox`: Contains the Terraform project for deploying and interacting with the sandbox environment.
-  - `functions`: Lambda functions used in the rotation workflow.
-  - `sql`: SQL scripts executed in the CodeBuild pipeline to sanitize the database.
-  - `statemachine`: Contains the Step Functions state machine definitions for the rotation workflow.
-- `infrastructure/setup`: Contains the Terraform project for creating the RDS snapshot.
-  - `scripts`: Contains scripts used in the setup project, such as waiting for the bastion EC2 instance to be ready and seeding the database.
+- `infrastructure/sandbox/`: Contains the Terraform project for deploying and interacting with the sandbox environment.
+  - `functions/`: Lambda functions used in the rotation workflow.
+  - `sql/`: SQL scripts executed in the CodeBuild pipeline to sanitize the database.
+  - `statemachine/`: Contains the Step Functions state machine definitions for the rotation workflow.
+- `infrastructure/setup/`: Contains the Terraform project for creating the RDS snapshot.
+  - `scripts/`: Contains scripts used in the setup project, such as waiting for the bastion EC2 instance to be ready and seeding the database.
 - `scripts/`: Contains general-purpose scripts used in the project, such as connecting to the database via Session Manager.
 
 ## 🏗️ Architecture
@@ -56,6 +56,8 @@ The main workflow consists of various AWS services such as Step Functions, Lambd
 - Other (VPC, CloudWatch, S3, IAM, etc.)
 
     Foundational services that support the overall rotation workflow, such as IAM permissions, networking, execution logs, and so on.
+
+In addition, for security reasons, the RDS instance is restored with an isolation security group. The isolation SG is only accessible from the CodeBuild environment, preventing exposure of sensitive data in the middle of the rotation process.
 
 ## 💻 Getting started
 
