@@ -13,6 +13,10 @@ RDS rotation is a process of replacing a database with a new one from a snapshot
 - **Streamlined database management**: Automates the process of refreshing development databases from production snapshots.
 - **Safety**: If any error occurs during the rotation process, incomplete database instance will be deleted automatically, to prevent any sensitive data from being served to development environments.
 
+## 🏗️ Architecture
+
+![System Architecture](./docs/system-architecture.png)
+
 ### 📂 Key directory structure
 
 - `infrastructure/sandbox/`: Contains the Terraform project for deploying and interacting with the sandbox environment.
@@ -22,10 +26,6 @@ RDS rotation is a process of replacing a database with a new one from a snapshot
 - `infrastructure/setup/`: Contains the Terraform project for creating the RDS snapshot.
   - `scripts/`: Contains scripts used in the setup project, such as waiting for the bastion EC2 instance to be ready and seeding the database.
 - `scripts/`: Contains general-purpose scripts used in the project, such as connecting to the database via Session Manager.
-
-## 🏗️ Architecture
-
-![System Architecture](./docs/system-architecture.png)
 
 ## ⚙️ Technical details
 
