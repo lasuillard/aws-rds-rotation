@@ -6,18 +6,12 @@ A demo project for automating RDS database recreation from a snapshot.
 
 ## 👀 Overview
 
-RDS rotation is a process of replacing a database with a new one from a snapshot. The primary usage is to create a new development database from a production database snapshot with sensitive data masked and scrubbed.
+RDS rotation is a process of replacing a database with a new one from a snapshot. The primary usage is to create a new development database from a production database snapshot with sensitive data masked and scrubbed. Main benefits of this approach include:
 
-![Step Functions graph](./docs/stepfunctions-graph.png)
-
-1. Restore the RDS database from the snapshot created in the setup project.
-1. Once the RDS database is restored and ready, update master credentials and connection settings as needed.
-1. Wait once again for the RDS database to become fully available and operational.
-1. Sanitize the database by masking and scrubbing sensitive data via CodeBuild.
-1. Switch traffic to the new RDS database.
-1. Delete the old RDS database.
-
-If any error occurs during the rotation process, incomplete database instance will be deleted automatically, to prevent sensitive data from being served to development environments.
+- **Improved security**: Sensitive data is protected by masking and scrubbing it in the development database.
+- **Easier testing and development**: Developers can work with realistic data without risking exposure of production data.
+- **Streamlined database management**: Automates the process of refreshing development databases from production snapshots.
+- **Safety**: If any error occurs during the rotation process, incomplete database instance will be deleted automatically, to prevent any sensitive data from being served to development environments.
 
 ### 📂 Key directory structure
 
