@@ -1,7 +1,5 @@
 # aws-rds-rotation
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 A demo project for automating RDS database recreation from a snapshot.
 
 ## 👀 Overview
@@ -139,7 +137,3 @@ Because RDS instances are created and managed by Step Functions, `terraform dest
 ```
 
 To clean up the environment properly, you need to manually clean up the RDS instances before destroying the sandbox environment. In addition, if you have created RDS snapshot in setup step, you should also delete those snapshots to avoid incurring unnecessary costs (it's tiny but can add up over time).
-
-## 📜 License
-
-This project is licensed under the MIT License.
