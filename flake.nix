@@ -30,6 +30,7 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             pre-commit
+            just
             terraform
             awscli2
             ssm-session-manager-plugin
