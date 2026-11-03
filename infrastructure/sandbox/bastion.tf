@@ -23,6 +23,12 @@ module "bastion" {
   instance_type          = "t4g.micro"
   subnet_id              = module.vpc.private_subnets[0]
   vpc_security_group_ids = [module.bastion_sg.id]
+
+  create_iam_instance_profile = true
+  iam_role_description        = "IAM role for EC2 instance"
+  iam_role_policies = {
+    AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  }
 }
 
 module "bastion_sg" {
