@@ -7,6 +7,7 @@ install:
 
 # Update dependencies and tools
 update:
+    nix flake update
     pre-commit autoupdate
 
 alias up := update
